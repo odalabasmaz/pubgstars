@@ -1,0 +1,35 @@
+@media all {
+  .Signup {
+    padding: 30px 10px;
+  }
+
+  .SignupForm {
+    background-color: #fff;
+    border: 1px solid #e6e6e6;
+    border-radius: 4px;
+    padding: 30px;
+    margin: 0 auto;
+    max-width: 500px;
+  }
+
+  .form-title {
+    font-size: 1.429rem;
+    color: #003466;
+    border-bottom: solid 1px #e5e5e5;
+    margin: 10px 0;
+    padding-bottom: 10px;
+    font-weight: 600;
+  }
+
+  .SignupForm h1{
+    text-align: center;
+  }
+
+  .Signup form {
+    font-size: 14px;
+  }
+
+  .SignupForm a{
+    font-size: 12px;
+  }
+}

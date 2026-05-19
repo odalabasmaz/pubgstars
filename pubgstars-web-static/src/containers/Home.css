@@ -1,0 +1,25 @@
+.Home .lander {
+}
+
+.Home .lander h1 {
+  font-family: "Open Sans", sans-serif;
+  font-weight: 600;
+  padding-top: 20px;
+}
+
+.Home .lander div a:first-child {
+  margin-right: 20px;
+}
+
+.Home .lander > img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.card-text {
+  text-align: left !important;
+}
+
+.card > img {
+  max-height: 120px;
+}

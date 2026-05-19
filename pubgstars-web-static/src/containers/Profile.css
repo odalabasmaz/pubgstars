@@ -1,0 +1,12 @@
+.Profile {
+    padding-bottom: 15px;
+}
+
+.Profile > .nav-tabs .nav-link.active {
+    color: #ffffff;
+    background-color: #66AFE9;
+}
+
+.tab-content {
+    padding-top: 15px;
+}

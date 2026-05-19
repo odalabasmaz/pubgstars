@@ -1,0 +1,18 @@
+.Footer {
+    padding: 15px 0 15px 0;
+    border-top: 3px solid #f48411;
+    font-size: 14px !important;
+    background: #FDFDFF;
+}
+
+ul.social-media-list {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+    font-size: 0;
+}
+
+ul.social-media-list li {
+    display: inline-block;
+    margin: 2px;
+}

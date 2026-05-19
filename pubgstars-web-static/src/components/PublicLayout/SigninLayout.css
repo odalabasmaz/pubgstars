@@ -1,0 +1,25 @@
+.mainSection {
+    margin-top: 30px;
+}
+
+.header-bottom {
+    background: #37474F;
+}
+
+.header-bottom .nav a {
+    background: none;
+    border-bottom: 1px solid #455A64;
+    color: white;
+    font-size: 14px;
+    padding: 16px 24px;
+}
+
+.header-bottom .nav a:hover {
+    background: none;
+    color: #ECEFF1;
+}
+
+.header-bottom .nav a.active {
+    background: #f48411;
+    color: #ECEFF1;
+}

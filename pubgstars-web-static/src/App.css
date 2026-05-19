@@ -1,0 +1,47 @@
+.App {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+.App > div {
+  flex:1;
+}
+
+.navbar {
+  padding: 0;
+}
+
+.navbar-light .navbar-nav .nav-link.active {
+  color: #f48411;
+}
+
+.navbar-light .navbar-nav > a:hover {
+  color: #f48411 !important;
+}
+
+.navbar-brand-img {
+  display: block;
+  height: 3.5rem;
+}
+
+.form-group label {
+  margin-bottom: 5px;
+}
+
+.header-container {
+  height: 144px;
+  background: linear-gradient(to right, rgb(254, 140, 0), rgb(248, 54, 0)) center;
+  background-size: cover;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  margin-bottom: 20px;
+}
+
+.header-container .banner-title {
+  font-weight: 400;
+  color: #fff;
+  text-align: center;
+}

@@ -1,0 +1,33 @@
+# OS
+.DS_Store
+
+# IDE
+.idea/
+
+# Go
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+.glide/
+vendor/
+build/package/
+
+# Node / React
+node_modules/
+/pubgstars-web-static/build/
+/pubgstars-web-static/coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env files (keep .env.example, ignore actual secrets)
+.env
+.env.local
+.env.*.local
+
+# Lambda build artifacts
+main
+main.zip

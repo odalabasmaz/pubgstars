@@ -1,0 +1,9 @@
+.About ol, ul {
+    list-style: none outside none;
+    padding-left: 0;
+}
+
+.fa-angle-right:before {
+    margin-right: 5px;
+    color: #f48411;
+}
