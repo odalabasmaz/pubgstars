@@ -1,47 +1,39 @@
 package main
 
 import (
-	AwsUtils "../../internal"
-	DataService "../../internal"
-	SlackService "../../internal"
-	TransactionLogUtils "../../internal"
 	"context"
 	"fmt"
-	"github.com/aws/aws-lambda-go/lambda"
 	"log"
 	"strconv"
+
+	"github.com/aws/aws-lambda-go/lambda"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
 )
 
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin !!")
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	email := svc.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
+	amount := svc.CovertToString(event.Body["amount"])
+	description := svc.CovertToString(event.Body["description"])
 
-	email := AwsUtils.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
-	inputMap := event.Body
-	amount := AwsUtils.CovertToString(inputMap["amount"])
-	description := AwsUtils.CovertToString(inputMap["description"])
 	amountFloat, err := strconv.ParseFloat(amount, 64)
-
 	if err != nil {
-		return AwsUtils.Response{StatusCode: 400, ErrorMessage: "Yuklenmek istenen tutar geçersiz!"}, err
+		return svc.Response{StatusCode: 400, ErrorMessage: "Yuklenmek istenen tutar geçersiz!"}, nil
 	}
 
-	user := AwsUtils.GetUserByEmail(email)
+	user := svc.GetUserByEmail(email)
+	tx := svc.DepositMoney(user.Id, amount, description)
 
-	tx := TransactionLogUtils.DepositMoney(user.Id, amount, description)
-	requestText := "Deposit money request: \n" +
-		"\tUser: [" + email + "]\n" +
-		"\tDescription: [" + description + "]\n" +
-		"\tAmount: [" + fmt.Sprintf("%.2f", amountFloat) + " TL]"
-	SlackService.SendMessage(requestText)
-	e := DataService.UpdateUserWithTx(user, tx)
-	if e != nil {
-		fmt.Println("Got error in transaction")
-		fmt.Println(e.Error())
-		SlackService.SendMessage("!!! " + requestText)
-		return AwsUtils.Response{StatusCode: 500, ErrorMessage: "Beklenmeyen bir hata oluştu!"}, err
+	requestText := fmt.Sprintf("Deposit money request:\n\tUser: [%s]\n\tDescription: [%s]\n\tAmount: [%.2f TL]",
+		email, description, amountFloat)
+	svc.SendMessage(requestText)
+
+	if err := svc.UpdateUserWithTx(user, tx); err != nil {
+		log.Printf("depositMoney transaction error: %v", err)
+		svc.SendMessage("!!! " + requestText)
+		return svc.Response{StatusCode: 500, ErrorMessage: "Beklenmeyen bir hata oluştu!"}, nil
 	}
-
-	return AwsUtils.Response{StatusCode: 200}, nil
+	return svc.Response{StatusCode: 200}, nil
 }
 
 func main() {

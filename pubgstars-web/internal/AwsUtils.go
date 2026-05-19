@@ -1,22 +1,24 @@
 package internal
 
 import (
-	Model "../model"
-	Tables "../model/tables"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
 	"log"
 	"os"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
+
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model"
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model/tables"
 )
 
 type RequestEvent struct {
@@ -34,15 +36,12 @@ type Response struct {
 	IsBase64Encoded   bool                `json:"isBase64Encoded,omitempty"`
 }
 
-//TODO Delete
-var isForTest = os.Getenv("isForTest") == "true"
-
 func GetDynamoDbClient(region string) *dynamodb.DynamoDB {
-	if isForTest {
-		// for test purpose
+	profile := os.Getenv("AWS_PROFILE")
+	if profile != "" {
 		sess, _ := session.NewSessionWithOptions(session.Options{
-			Config:  aws.Config{Region: aws.String("eu-central-1")},
-			Profile: "pg",
+			Config:  aws.Config{Region: aws.String(region)},
+			Profile: profile,
 		})
 		return dynamodb.New(sess)
 	}
@@ -50,9 +49,8 @@ func GetDynamoDbClient(region string) *dynamodb.DynamoDB {
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(region),
 	})
-
 	if err != nil {
-		log.Fatalf("DynamoDB client could not be created because of the err: %v\n", err)
+		log.Fatalf("DynamoDB client could not be created: %v\n", err)
 	}
 	return dynamodb.New(sess)
 }
@@ -71,17 +69,15 @@ func ConvertMillisToString(millis int64) string {
 
 func GetUsernameFromJwtToken(jwtToken string) string {
 	jwtPayload := strings.Split(jwtToken, ".")[1]
-	//bytes, err := base64.StdEncoding.DecodeString(jwtPayload+"==")
 	bytes, err := base64.RawURLEncoding.DecodeString(jwtPayload)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("failed to decode JWT: %v", err)
 		return ""
 	}
-	jwtPayloadDecoded := string(bytes)
-	log.Println(jwtPayloadDecoded)
 	datum := make(map[string]interface{})
 	if err := json.Unmarshal(bytes, &datum); err != nil {
-		log.Fatalf("error %v", err)
+		log.Printf("failed to unmarshal JWT payload: %v", err)
+		return ""
 	}
 	return CovertToString(datum["email"])
 }
@@ -90,346 +86,250 @@ func GetUsernameFromJwtTokenForAdmin(jwtToken string) string {
 	jwtPayload := strings.Split(jwtToken, ".")[1]
 	bytes, err := base64.RawURLEncoding.DecodeString(jwtPayload)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("failed to decode JWT: %v", err)
 		return ""
 	}
-	jwtPayloadDecoded := string(bytes)
-	log.Println(jwtPayloadDecoded)
 	datum := make(map[string]interface{})
 	if err := json.Unmarshal(bytes, &datum); err != nil {
-		log.Fatalf("error %v", err)
+		log.Printf("failed to unmarshal JWT payload: %v", err)
+		return ""
 	}
 	return CovertToString(datum["cognito:username"])
 }
 
-func GetGameById(gameId string) Model.Game {
-	log.Println("getGameById: ", gameId)
-	/*filt := expression.Name("id").Equal(expression.Value(gameId))
-	expr, err := expression.NewBuilder().WithFilter(filt).Build()
-	if err != nil {
-		fmt.Println("failed filter: ", err)
-	}*/
-
+func GetGameById(gameId string) model.Game {
+	log.Println("getGameById:", gameId)
 	params := &dynamodb.QueryInput{
-		TableName:              aws.String(Tables.GAMES),
+		TableName:              aws.String(tables.GAMES),
 		KeyConditionExpression: aws.String("id = :gameId"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":gameId": {
-				S: aws.String(gameId),
-			},
+			":gameId": {S: aws.String(gameId)},
 		},
 	}
-
 	result, err := db.Query(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
+		log.Printf("GetGameById query failed: %v", err)
+		return model.Game{}
 	}
 
-	//todo: check result if game exists
-
-	var game Model.Game
+	var game model.Game
 	for _, i := range result.Items {
-		err = dynamodbattribute.UnmarshalMap(i, &game)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
+		if err = dynamodbattribute.UnmarshalMap(i, &game); err != nil {
+			log.Printf("GetGameById unmarshal error: %v", err)
 		} else {
 			break
 		}
 	}
-
-	if err != nil {
-		panic(err)
-	}
-
-	log.Println("returning: ")
-	log.Println(game)
-
 	return game
 }
-func GetUserMap() (map[string]string, error) {
-	var userMap = make(map[string]string)
 
-	params := &dynamodb.ScanInput{
-		TableName: aws.String(Tables.USERS),
-	}
+func GetUserMap() (map[string]string, error) {
+	params := &dynamodb.ScanInput{TableName: aws.String(tables.USERS)}
 	result, err := db.Scan(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
-		return nil, err
+		return nil, fmt.Errorf("GetUserMap scan failed: %w", err)
 	}
 
-	if len(result.Items) == 0 {
-		return userMap, nil
-	}
-
+	userMap := make(map[string]string, len(result.Items))
 	for _, i := range result.Items {
-		user := Model.User{}
-
-		err = dynamodbattribute.UnmarshalMap(i, &user)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
+		var user model.User
+		if err = dynamodbattribute.UnmarshalMap(i, &user); err != nil {
+			log.Printf("GetUserMap unmarshal error: %v", err)
+			continue
 		}
-
 		userMap[user.Id] = user.Username
 	}
-
 	return userMap, nil
 }
 
-func ListUsers() ([]Model.User, error) {
+func ListUsers() ([]model.User, error) {
 	log.Println("listing users...")
-	params := &dynamodb.ScanInput{
-		TableName: aws.String(Tables.USERS),
-	}
+	params := &dynamodb.ScanInput{TableName: aws.String(tables.USERS)}
 	result, err := db.Scan(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
-		panic(err)
+		return nil, fmt.Errorf("ListUsers scan failed: %w", err)
 	}
 
-	var users []Model.User
-	if len(result.Items) == 0 {
-		return users, nil
-	}
-
+	var users []model.User
 	for _, i := range result.Items {
-		user := Model.User{}
-
-		err = dynamodbattribute.UnmarshalMap(i, &user)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
+		var user model.User
+		if err = dynamodbattribute.UnmarshalMap(i, &user); err != nil {
+			log.Printf("ListUsers unmarshal error: %v", err)
+			continue
 		}
-
 		user.SecretQuestion = ""
 		user.SecretAnswer = ""
 		users = append(users, user)
 	}
-
-	log.Println("returning users: ")
-	log.Println(users)
-	return users, err
+	return users, nil
 }
 
-func GetUserById(userId string) Model.User {
-	log.Println("getUserById: ", userId)
-
+func GetUserById(userId string) model.User {
+	log.Println("getUserById:", userId)
 	params := &dynamodb.QueryInput{
-		TableName:              aws.String(Tables.USERS),
+		TableName:              aws.String(tables.USERS),
 		KeyConditionExpression: aws.String("id = :userId"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":userId": {
-				S: aws.String(userId),
-			},
+			":userId": {S: aws.String(userId)},
 		},
 	}
 	result, err := db.Query(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
+		log.Printf("GetUserById query failed: %v", err)
+		return model.User{}
 	}
 
-	var user Model.User
+	var user model.User
 	for _, i := range result.Items {
-		err = dynamodbattribute.UnmarshalMap(i, &user)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
+		if err = dynamodbattribute.UnmarshalMap(i, &user); err != nil {
+			log.Printf("GetUserById unmarshal error: %v", err)
 		} else {
 			break
 		}
 	}
-
-	log.Println("returning: ")
-	log.Println(user)
-	if err != nil {
-		fmt.Println("panic!!")
-		panic(err)
-	}
-
 	return user
 }
 
-func GetUserByEmail(email string) Model.User {
-	log.Println("getUserByName: ", email)
-
+func GetUserByEmail(email string) model.User {
+	log.Println("getUserByEmail:", email)
 	filt := expression.Name("email").Equal(expression.Value(email))
 	expr, err := expression.NewBuilder().WithFilter(filt).Build()
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("GetUserByEmail expression build failed: %v", err)
+		return model.User{}
 	}
 
 	params := &dynamodb.ScanInput{
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		FilterExpression:          expr.Filter(),
-		TableName:                 aws.String(Tables.USERS),
+		TableName:                 aws.String(tables.USERS),
 	}
-
 	result, err := db.Scan(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
+		log.Printf("GetUserByEmail scan failed: %v", err)
+		return model.User{}
 	}
 
-	var user Model.User
+	var user model.User
 	for _, i := range result.Items {
-		err = dynamodbattribute.UnmarshalMap(i, &user)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
+		if err = dynamodbattribute.UnmarshalMap(i, &user); err != nil {
+			log.Printf("GetUserByEmail unmarshal error: %v", err)
 		} else {
 			break
 		}
 	}
-
-	log.Println("returning: ")
-	log.Println(user)
-	if err != nil {
-		fmt.Println("panic!!")
-		panic(err)
-	}
-
 	return user
 }
 
 func UserExistsByUsername(username string) bool {
-	log.Println("UserExistsByUsernameOrEmail: ", username)
-
+	log.Println("UserExistsByUsername:", username)
 	filt := expression.Name("username").Equal(expression.Value(username))
 	expr, err := expression.NewBuilder().WithFilter(filt).Build()
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("UserExistsByUsername expression build failed: %v", err)
+		return false
 	}
 
 	params := &dynamodb.ScanInput{
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		FilterExpression:          expr.Filter(),
-		TableName:                 aws.String(Tables.USERS),
+		TableName:                 aws.String(tables.USERS),
 	}
-
 	result, err := db.Scan(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
+		log.Printf("UserExistsByUsername scan failed: %v", err)
+		return false
 	}
-	fmt.Println("result size: ", len(result.Items))
-
-	if len(result.Items) == 0 {
-		return true
-	}
-	return false
+	return len(result.Items) == 0
 }
 
-func GetGameUsersByGameId(gameId string) Model.GameUser {
-	log.Println("getGameUsersByGameId: ", gameId)
+func GetGameUsersByGameId(gameId string) model.GameUser {
+	log.Println("getGameUsersByGameId:", gameId)
 	params := &dynamodb.QueryInput{
-		TableName:              aws.String(Tables.GAME_USERS),
+		TableName:              aws.String(tables.GAME_USERS),
 		KeyConditionExpression: aws.String("gameId = :gameId"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":gameId": {
-				S: aws.String(gameId),
-			},
+			":gameId": {S: aws.String(gameId)},
 		},
 	}
 
-	var gameUser Model.GameUser
+	var gameUser model.GameUser
+	gameUser.GameId = gameId
+
 	result, err := db.Query(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
+		log.Printf("GetGameUsersByGameId query failed: %v", err)
 		return gameUser
-	} else if len(result.Items) == 0 {
-		fmt.Print("no result found for gameUsers")
-		gameUser.GameId = gameId
+	}
+	if len(result.Items) == 0 {
 		return gameUser
 	}
 
 	for _, i := range result.Items {
-		err = dynamodbattribute.UnmarshalMap(i, &gameUser)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
+		if err = dynamodbattribute.UnmarshalMap(i, &gameUser); err != nil {
+			log.Printf("GetGameUsersByGameId unmarshal error: %v", err)
 		} else {
 			break
 		}
 	}
-
-	log.Println("returning: ")
-	log.Println(gameUser)
-	if err != nil {
-		panic(err)
-	}
-
 	return gameUser
 }
 
-func GetUserGamesByUserId(userId string) Model.UserGame {
-	log.Println("getUserGamesByGameId: ", userId)
-
+func GetUserGamesByUserId(userId string) model.UserGame {
+	log.Println("getUserGamesByUserId:", userId)
 	params := &dynamodb.QueryInput{
-		TableName:              aws.String(Tables.USER_GAMES),
+		TableName:              aws.String(tables.USER_GAMES),
 		KeyConditionExpression: aws.String("userId = :userId"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":userId": {
-				S: aws.String(userId),
-			},
+			":userId": {S: aws.String(userId)},
 		},
 	}
 
-	var userGame Model.UserGame
+	var userGame model.UserGame
+	userGame.UserId = userId
+
 	result, err := db.Query(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
+		log.Printf("GetUserGamesByUserId query failed: %v", err)
 		return userGame
-	} else if len(result.Items) == 0 {
-		fmt.Print("no result found for userGames")
-		userGame.UserId = userId
+	}
+	if len(result.Items) == 0 {
 		return userGame
 	}
 
 	for _, i := range result.Items {
-		err = dynamodbattribute.UnmarshalMap(i, &userGame)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
+		if err = dynamodbattribute.UnmarshalMap(i, &userGame); err != nil {
+			log.Printf("GetUserGamesByUserId unmarshal error: %v", err)
 		} else {
 			break
 		}
 	}
-
-	if userGame.Games == nil {
-		log.Println("")
-	}
-
-	log.Println("returning: ")
-	log.Println(userGame)
-	if err != nil {
-		panic(err)
-	}
-
 	return userGame
 }
 
-// TODO: consider pagination...
-func ListGames(tableName string, expr expression.Expression) ([]Model.Game, error) {
-	games, err1 := ListGamesWithPassword(tableName, expr)
-	userMap, err2 := GetUserMap()
-
-	if err1 == nil && err2 == nil {
-		for i, g := range games {
-			games[i].RoomPassword = ""
-			games[i].Discord = ""
-			games[i].Winner1stName = userMap[g.Winner1st]
-			games[i].Winner2ndName = userMap[g.Winner2nd]
-			games[i].Winner3rdName = userMap[g.Winner3rd]
-		}
+func ListGames(tableName string, expr expression.Expression) ([]model.Game, error) {
+	games, err := ListGamesWithPassword(tableName, expr)
+	if err != nil {
+		return nil, err
 	}
-	return games, errors.New("unexpected error during listing games")
+	userMap, err := GetUserMap()
+	if err != nil {
+		return nil, err
+	}
+	for i, g := range games {
+		games[i].RoomPassword = ""
+		games[i].Discord = ""
+		games[i].Winner1stName = userMap[g.Winner1st]
+		games[i].Winner2ndName = userMap[g.Winner2nd]
+		games[i].Winner3rdName = userMap[g.Winner3rd]
+	}
+	return games, nil
 }
 
-func ListGamesWithPassword(tableName string, expr expression.Expression) ([]Model.Game, error) {
+func ListGamesWithPassword(tableName string, expr expression.Expression) ([]model.Game, error) {
 	log.Println("listGames...")
-
 	params := &dynamodb.ScanInput{
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
@@ -438,137 +338,101 @@ func ListGamesWithPassword(tableName string, expr expression.Expression) ([]Mode
 	}
 	result, err := db.Scan(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
-		panic(err)
+		return nil, fmt.Errorf("ListGamesWithPassword scan failed: %w", err)
 	}
 
-	var games []Model.Game
-	if len(result.Items) == 0 {
-		return games, nil
-	}
-
+	var games []model.Game
 	for _, i := range result.Items {
-		game := Model.Game{}
-
-		err = dynamodbattribute.UnmarshalMap(i, &game)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
+		var game model.Game
+		if err = dynamodbattribute.UnmarshalMap(i, &game); err != nil {
+			log.Printf("ListGamesWithPassword unmarshal error: %v", err)
+			continue
 		}
-
 		game.Cancellable = IsGameCancellable(game)
 		games = append(games, game)
 	}
-
 	sort.Slice(games, func(i, j int) bool {
 		return games[i].GameDate < games[j].GameDate
 	})
-
-	log.Println("returning games: ")
-	log.Println(games)
-	return games, err
+	return games, nil
 }
 
-func GetTransactionLogs(expr expression.Expression) ([]Model.TransactionLog, error) {
+func GetTransactionLogs(expr expression.Expression) ([]model.TransactionLog, error) {
 	log.Println("listTransactionLogs...")
 	params := &dynamodb.ScanInput{
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		FilterExpression:          expr.Filter(),
-		TableName:                 aws.String(Tables.TRANSACTION_LOG),
+		TableName:                 aws.String(tables.TRANSACTION_LOG),
 	}
 	result, err := db.Scan(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
-		panic(err)
+		return nil, fmt.Errorf("GetTransactionLogs scan failed: %w", err)
 	}
 
-	var txLogs []Model.TransactionLog
+	var txLogs []model.TransactionLog
 	for _, i := range result.Items {
-		tx := Model.TransactionLog{}
-
-		err = dynamodbattribute.UnmarshalMap(i, &tx)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
+		var tx model.TransactionLog
+		if err = dynamodbattribute.UnmarshalMap(i, &tx); err != nil {
+			log.Printf("GetTransactionLogs unmarshal error: %v", err)
+			continue
 		}
-
 		txLogs = append(txLogs, tx)
 	}
-
-	// sort
 	sort.Slice(txLogs, func(i, j int) bool {
 		return txLogs[i].InsertedAt > txLogs[j].InsertedAt
 	})
-
-	log.Println("returning: ")
-	log.Println(txLogs)
-	return txLogs, err
+	return txLogs, nil
 }
 
-func GetUserDetails(expr expression.Expression) (Model.User, error) {
+func GetUserDetails(expr expression.Expression) (model.User, error) {
 	log.Println("gettingUserDetails...")
 	params := &dynamodb.ScanInput{
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		FilterExpression:          expr.Filter(),
-		TableName:                 aws.String(Tables.USERS),
+		TableName:                 aws.String(tables.USERS),
 	}
-	var users []Model.User
 	result, err := db.Scan(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
-		return users[0], errors.New("failed to make Query API call")
+		return model.User{}, fmt.Errorf("GetUserDetails scan failed: %w", err)
+	}
+	if len(result.Items) == 0 {
+		return model.User{}, errors.New("user not found")
 	}
 
-	for _, i := range result.Items {
-		user := Model.User{}
-
-		err = dynamodbattribute.UnmarshalMap(i, &user)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
-		}
-
-		user.SecretQuestion = ""
-		user.SecretAnswer = ""
-		users = append(users, user)
+	var user model.User
+	if err = dynamodbattribute.UnmarshalMap(result.Items[0], &user); err != nil {
+		return model.User{}, fmt.Errorf("GetUserDetails unmarshal failed: %w", err)
 	}
-
-	return users[0], err
+	user.SecretQuestion = ""
+	user.SecretAnswer = ""
+	return user, nil
 }
 
-func ListMessages(expr expression.Expression) ([]Model.Message, error) {
+func ListMessages(expr expression.Expression) ([]model.Message, error) {
 	log.Println("listing messages...")
 	params := &dynamodb.ScanInput{
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		FilterExpression:          expr.Filter(),
-		TableName:                 aws.String("messages"),
+		TableName:                 aws.String(tables.MESSAGES),
 	}
 	result, err := db.Scan(params)
 	if err != nil {
-		fmt.Println("failed to make Query API call: ", err)
-		return nil, errors.New("failed to make Query API call")
+		return nil, fmt.Errorf("ListMessages scan failed: %w", err)
 	}
 
-	var messages []Model.Message
-	if len(result.Items) == 0 {
-		return messages, nil
-	}
-
+	var messages []model.Message
 	for _, i := range result.Items {
-		message := Model.Message{}
-
-		err = dynamodbattribute.UnmarshalMap(i, &message)
-		if err != nil {
-			fmt.Println("Got error unmarshalling:")
-			fmt.Println(err.Error())
+		var message model.Message
+		if err = dynamodbattribute.UnmarshalMap(i, &message); err != nil {
+			log.Printf("ListMessages unmarshal error: %v", err)
+			continue
 		}
-
 		messages = append(messages, message)
 	}
-	return messages, err
+	return messages, nil
 }
 
 func Contains(slice []string, val string) bool {

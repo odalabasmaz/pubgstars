@@ -1,14 +1,13 @@
 package internal
 
 import (
-	Model "../model"
-	"errors"
 	"fmt"
-	"strconv"
+
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model"
 )
 
-func BaseTransaction(userId string) Model.TransactionLog {
-	var tx Model.TransactionLog
+func BaseTransaction(userId string) model.TransactionLog {
+	var tx model.TransactionLog
 	tx.Id = GenerateKey(10)
 	tx.UserId = userId
 	tx.Operator = "system"
@@ -16,8 +15,8 @@ func BaseTransaction(userId string) Model.TransactionLog {
 	return tx
 }
 
-func BaseTransactionWithOperator(userId string, operator string) Model.TransactionLog {
-	var tx Model.TransactionLog
+func BaseTransactionWithOperator(userId string, operator string) model.TransactionLog {
+	var tx model.TransactionLog
 	tx.Id = GenerateKey(10)
 	tx.UserId = userId
 	tx.Operator = operator
@@ -25,74 +24,64 @@ func BaseTransactionWithOperator(userId string, operator string) Model.Transacti
 	return tx
 }
 
-func BalanceDeposit(userId string, quantity int64) {
+func RegisterGame(userId string, gameDetail string) model.TransactionLog {
 	tx := BaseTransaction(userId)
-	tx.TransactionType = Model.BALANCE
-	tx.SubTransactionType = Model.BALANCE_DEPOSIT
-	tx.Detail = strconv.FormatInt(quantity, 10)
-}
-
-func RegisterGame(userId string, gameId string) Model.TransactionLog {
-	tx := BaseTransaction(userId)
-	tx.TransactionType = Model.GAME
-	tx.SubTransactionType = Model.GAME_REGISTER
-	tx.Detail = gameId
+	tx.TransactionType = model.GAME
+	tx.SubTransactionType = model.GAME_REGISTER
+	tx.Detail = gameDetail
 	return tx
 }
 
-func WithdrawMoney(userId string, iban string, amount string) Model.TransactionLog {
+func UnregisterGame(userId string, gameDetail string) model.TransactionLog {
 	tx := BaseTransaction(userId)
-	tx.TransactionType = Model.BALANCE
-	tx.SubTransactionType = Model.BALANCE_WITHDRAW
+	tx.TransactionType = model.GAME
+	tx.SubTransactionType = model.GAME_UNREGISTER
+	tx.Detail = gameDetail
+	return tx
+}
+
+func WithdrawMoney(userId string, iban string, amount string) model.TransactionLog {
+	tx := BaseTransaction(userId)
+	tx.TransactionType = model.BALANCE
+	tx.SubTransactionType = model.BALANCE_WITHDRAW
 	tx.Detail = iban + " numaralı hesaba " + amount + " TL aktarım talebi alınmıştır"
 	return tx
 }
 
-func DepositMoney(userId string, amount string, description string) Model.TransactionLog {
+func DepositMoney(userId string, amount string, description string) model.TransactionLog {
 	tx := BaseTransaction(userId)
-	tx.TransactionType = Model.BALANCE
-	tx.SubTransactionType = Model.BALANCE_WITHDRAW
-	tx.Detail = userId + " numaralı hesaba " + amount + " TL aktarım talebi alınmıştır"
+	tx.TransactionType = model.BALANCE
+	tx.SubTransactionType = model.BALANCE_DEPOSIT
+	tx.Detail = userId + " numaralı hesaba " + amount + " TL yatırım talebi alınmıştır. Açıklama: " + description
 	return tx
 }
 
-func AddBalance(operator string, userId string, balance float64, bonus float64) Model.TransactionLog {
+func AddBalance(operator string, userId string, balance float64, bonus float64) model.TransactionLog {
 	tx := BaseTransactionWithOperator(userId, operator)
-	tx.TransactionType = Model.BALANCE
-	tx.SubTransactionType = Model.BALANCE_WITHDRAW
+	tx.TransactionType = model.BALANCE
+	tx.SubTransactionType = model.BALANCE_LOAD
 	if balance > 0 && bonus > 0 {
 		tx.Detail = "Hesabiniza " + fmt.Sprintf("%.2f", balance) + " TL bakiye ve " + fmt.Sprintf("%.2f", bonus) + " TL bonus yuklenmistir"
 	} else if balance > 0 {
 		tx.Detail = "Hesabiniza " + fmt.Sprintf("%.2f", balance) + " TL bakiye yuklenmistir"
 	} else if bonus > 0 {
 		tx.Detail = "Hesabiniza " + fmt.Sprintf("%.2f", bonus) + " TL bonus yuklenmistir"
-	} else {
-		panic(errors.New("balance and bonus are both invalid"))
 	}
-
 	return tx
 }
 
-func UnregisterGame(userId string, gameId string) Model.TransactionLog {
-	tx := BaseTransaction(userId)
-	tx.TransactionType = Model.GAME
-	tx.SubTransactionType = Model.GAME_UNREGISTER
-	tx.Detail = gameId
-	return tx
-}
-
-func GetTransactionType(transactionType Model.TransactionType) string {
-	return Model.TRANSACTION_MAP[transactionType]
-}
-
-func GetSubTransactionType(subTransactionType Model.SubTransactionType) string {
-	return Model.SUB_TRANSACTION_MAP[subTransactionType]
-}
-
-func WinGame(game Model.Game, operator string, userId string, award float64) Model.TransactionLog {
+func WinGame(game model.Game, operator string, userId string, award float64) model.TransactionLog {
 	tx := BaseTransactionWithOperator(userId, operator)
-	tx.TransactionType = Model.GAME
-	tx.SubTransactionType = Model.GAME_WIN
+	tx.TransactionType = model.GAME
+	tx.SubTransactionType = model.GAME_WIN
 	tx.Detail = "Oyunu kazandiniz!\n" + game.Detail() + "\n" + fmt.Sprintf("%.2f", award) + " TL odul bakiyenize yuklendi."
 	return tx
+}
+
+func GetTransactionType(transactionType model.TransactionType) string {
+	return model.TRANSACTION_MAP[transactionType]
+}
+
+func GetSubTransactionType(subTransactionType model.SubTransactionType) string {
+	return model.SUB_TRANSACTION_MAP[subTransactionType]
 }

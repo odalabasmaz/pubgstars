@@ -1,63 +1,53 @@
 package main
 
 import (
-	AwsUtils "../../internal"
-	DataService "../../internal"
-	SlackService "../../internal"
-	TransactionLogUtils "../../internal"
 	"context"
 	"fmt"
-	"github.com/aws/aws-lambda-go/lambda"
 	"log"
 	"strconv"
+
+	"github.com/aws/aws-lambda-go/lambda"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
 )
 
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin !!")
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	email := svc.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
+	amount := svc.CovertToString(event.Body["amount"])
+	iban := svc.CovertToString(event.Body["iban"])
+	nameSurname := svc.CovertToString(event.Body["nameSurname"])
+	secretQuestion := svc.CovertToString(event.Body["secretQuestion"])
+	secretAnswer := svc.CovertToString(event.Body["secretAnswer"])
 
-	email := AwsUtils.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
-	inputMap := event.Body
-	amount := AwsUtils.CovertToString(inputMap["amount"])
-	iban := AwsUtils.CovertToString(inputMap["iban"])
-	nameSurname := AwsUtils.CovertToString(inputMap["nameSurname"])
-	secretQuestion := AwsUtils.CovertToString(inputMap["secretQuestion"])
-	secretAnswer := AwsUtils.CovertToString(inputMap["secretAnswer"])
 	amountFloat, err := strconv.ParseFloat(amount, 64)
-
 	if err != nil {
-		return AwsUtils.Response{StatusCode: 400, ErrorMessage: "Çekilmek istenen tutar geçersiz!"}, err
+		return svc.Response{StatusCode: 400, ErrorMessage: "Çekilmek istenen tutar geçersiz!"}, nil
 	}
-
 	if amountFloat < 100 {
-		return AwsUtils.Response{StatusCode: 400, ErrorMessage: "Çekilmek istenen tutar en az 100₺ olmalidir!"}, err
+		return svc.Response{StatusCode: 400, ErrorMessage: "Çekilmek istenen tutar en az 100₺ olmalidir!"}, nil
 	}
 
-	user := AwsUtils.GetUserByEmail(email)
-	user.Balance -= amountFloat
+	user := svc.GetUserByEmail(email)
 	if user.SecretQuestion != secretQuestion || user.SecretAnswer != secretAnswer {
-		return AwsUtils.Response{StatusCode: 400, ErrorMessage: "Gizli soru veya cevabı yanlış."}, err
+		return svc.Response{StatusCode: 400, ErrorMessage: "Gizli soru veya cevabı yanlış."}, nil
 	}
-	if user.Balance < 0 {
-		return AwsUtils.Response{StatusCode: 400, ErrorMessage: "Yetersiz Bakiye!"}, err
-	}
-
-	tx := TransactionLogUtils.WithdrawMoney(user.Id, iban, amount)
-	requestText := "Withdraw money request: \n" +
-		"\tUser: [" + email + "]\n" +
-		"\tTo: [" + nameSurname + "]\n" +
-		"\tIBAN: [" + iban + "]\n" +
-		"\tAmount: [" + fmt.Sprintf("%.2f", amountFloat) + " TL]"
-	SlackService.SendMessage(requestText)
-	log.Println("after: update > ", user)
-	e := DataService.UpdateUserWithTx(user, tx)
-	if e != nil {
-		fmt.Println("Got error in transaction")
-		fmt.Println(e.Error())
-		SlackService.SendMessage("!!! " + requestText)
-		return AwsUtils.Response{StatusCode: 500, ErrorMessage: "Beklenmeyen Hata Oluştu!"}, err
+	if user.Balance < amountFloat {
+		return svc.Response{StatusCode: 400, ErrorMessage: "Yetersiz Bakiye!"}, nil
 	}
 
-	return AwsUtils.Response{StatusCode: 200}, nil
+	user.Balance -= amountFloat
+	tx := svc.WithdrawMoney(user.Id, iban, amount)
+
+	requestText := fmt.Sprintf("Withdraw money request:\n\tUser: [%s]\n\tTo: [%s]\n\tIBAN: [%s]\n\tAmount: [%.2f TL]",
+		email, nameSurname, iban, amountFloat)
+	svc.SendMessage(requestText)
+
+	if err := svc.UpdateUserWithTx(user, tx); err != nil {
+		log.Printf("withdrawMoney transaction error: %v", err)
+		svc.SendMessage("!!! " + requestText)
+		return svc.Response{StatusCode: 500, ErrorMessage: "Beklenmeyen Hata Oluştu!"}, nil
+	}
+	return svc.Response{StatusCode: 200}, nil
 }
 
 func main() {

@@ -1,34 +1,28 @@
 package main
 
 import (
-	AwsUtils "../../internal"
-	Model "../../model"
 	"context"
-	"github.com/aws/aws-lambda-go/lambda"
 	"log"
+
+	"github.com/aws/aws-lambda-go/lambda"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model"
 )
 
-var (
-	db = AwsUtils.GetDynamoDbClient("eu-central-1")
-)
-
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin !!")
-	//operator := AwsUtils.GetUsernameFromJwtTokenForAdmin(event.Params["header"]["Authorization"])
-	httpMethod := event.Context["http-method"]
-	switch httpMethod {
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	switch event.Context["http-method"] {
 	case "GET":
-		return AwsUtils.Response{StatusCode: 200, Body: listUsers()}, nil
+		return svc.Response{StatusCode: 200, Body: listUsers()}, nil
 	default:
-		return AwsUtils.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + httpMethod}, nil
+		return svc.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + event.Context["http-method"]}, nil
 	}
 }
 
-func listUsers() []Model.User {
-	users, err := AwsUtils.ListUsers()
+func listUsers() []model.User {
+	users, err := svc.ListUsers()
 	if err != nil {
-		log.Println("Error occurred.")
-		log.Println(err)
+		log.Println("listUsers error:", err)
 	}
 	return users
 }

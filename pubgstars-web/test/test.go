@@ -1,13 +1,13 @@
 package main
 
 import (
-	Model "../model"
+	model "github.com/odalabasmaz/pubgstars/pubgstars-web/model"
 	"encoding/json"
 	"fmt"
 )
 
 func main() {
-	game := Model.Game{}
+	game := model.Game{}
 	game.Id = "1"
 	res, _ := json.Marshal(game)
 	fmt.Println(string(res))

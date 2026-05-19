@@ -1,398 +1,273 @@
 package internal
 
 import (
-	Model "../model"
-	Tables "../model/tables"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"log"
-	"strings"
+
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model"
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model/tables"
 )
 
-var (
-	db = GetDynamoDbClient("eu-central-1")
-)
+var db = GetDynamoDbClient("eu-central-1")
 
-func RegisterUserToGame(user Model.User, game Model.Game) error {
+func RegisterUserToGame(user model.User, game model.Game) error {
 	log.Println("userGameRegistration...")
-	gameId := game.Id
-	gamePrice := game.Price
-	userId := user.Id
-
-	gameUsers := GetGameUsersByGameId(gameId)
-	userGames := GetUserGamesByUserId(userId)
+	gameUsers := GetGameUsersByGameId(game.Id)
+	userGames := GetUserGamesByUserId(user.Id)
 
 	for _, g := range userGames.Games {
-		if gameId == g {
-			fmt.Println("already registered")
+		if game.Id == g {
 			return errors.New("oyuna zaten kayitlisiniz")
 		}
 	}
 
-	if user.GetAvailableBalance() < gamePrice {
+	if user.GetAvailableBalance() < game.Price {
 		return errors.New("oyun icin yeterli bakiyeniz bulunmamakta")
-	} else if !IsGameDateValid(game) {
+	}
+	if !IsGameDateValid(game) {
 		return errors.New("oyun tarihi gecerli degil")
 	}
 
-	gameUsers.Users = append(gameUsers.Users, userId)
-	userGames.Games = append(userGames.Games, gameId)
+	gameUsers.Users = append(gameUsers.Users, user.Id)
+	userGames.Games = append(userGames.Games, game.Id)
 	game.RegisteredUserCount += game.TeamPlayerCount
 
 	if game.RegisteredUserCount > 100 {
-		fmt.Println("oyunda boş yer bulunmamaktadır")
-		return errors.New("oyunda 	boş yer bulunmamaktadır")
+		return errors.New("oyunda boş yer bulunmamaktadır")
 	}
 
-	game.TotalIncome += gamePrice
-	// use bonus first, then balance
-	if gamePrice >= user.Bonus {
-		leftPrice := gamePrice - user.Bonus
+	game.TotalIncome += game.Price
+	if game.Price >= user.Bonus {
+		leftPrice := game.Price - user.Bonus
 		user.Bonus = 0
 		user.Balance -= leftPrice
 	} else {
-		user.Bonus -= gamePrice
+		user.Bonus -= game.Price
 	}
 
 	return userGameRegistration(0, user, game, gameUsers, userGames)
 }
 
-func UnregisterUserToGame(user Model.User, game Model.Game) error {
+func UnregisterUserToGame(user model.User, game model.Game) error {
 	log.Println("userGameUnregistration...")
-	gameId := game.Id
-	gamePrice := game.Price
-	userId := user.Id
-	game.RegisteredUserCount -= game.TeamPlayerCount
-	game.TotalIncome -= gamePrice
-	user.Bonus += gamePrice
-
 	if !IsGameCancellable(game) {
-		log.Println("bu oyunun tarihi gectigi icin iptal edemezsiniz")
 		return errors.New("bu oyunun tarihi gectigi icin iptal edemezsiniz")
 	}
 
-	gameUsers := GetGameUsersByGameId(gameId)
-	userGames := GetUserGamesByUserId(userId)
+	gameUsers := GetGameUsersByGameId(game.Id)
+	userGames := GetUserGamesByUserId(user.Id)
 
-	if !Contains(userGames.Games, gameId) {
-		log.Println("bu oyuna kayitli degilisiniz, userId: " + userId + ", gameId: " + gameId + ", userGames: " + strings.Join(userGames.Games[:], ","))
+	if !Contains(userGames.Games, game.Id) {
+		log.Printf("bu oyuna kayitli degilisiniz, userId: %s, gameId: %s, userGames: %s",
+			user.Id, game.Id, strings.Join(userGames.Games, ","))
 		return errors.New("bu oyuna kayitli degilisiniz")
 	}
 
-	log.Println("before: users > ", gameUsers.Users)
-	log.Println("before: games > ", userGames.Games)
-	var newGameUsers Model.GameUser
-	newGameUsers.GameId = gameId
+	game.RegisteredUserCount -= game.TeamPlayerCount
+	game.TotalIncome -= game.Price
+	user.Bonus += game.Price
+
+	var newGameUsers model.GameUser
+	newGameUsers.GameId = game.Id
 	for _, id := range gameUsers.Users {
-		if id != userId {
+		if id != user.Id {
 			newGameUsers.Users = append(newGameUsers.Users, id)
 		}
 	}
 
-	var newUserGames Model.UserGame
-	newUserGames.UserId = userId
+	var newUserGames model.UserGame
+	newUserGames.UserId = user.Id
 	for _, id := range userGames.Games {
-		if id != gameId {
+		if id != game.Id {
 			newUserGames.Games = append(newUserGames.Games, id)
 		}
 	}
-	log.Println("after: users > ", newGameUsers.Users)
-	log.Println("after: games > ", newUserGames.Games)
 
 	return userGameRegistration(1, user, game, newGameUsers, newUserGames)
 }
 
-func userGameRegistration(registrationType int, user Model.User, game Model.Game, gameUser Model.GameUser, userGame Model.UserGame) error {
-	log.Println("game will be saved: ", game)
-	log.Println("user will be saved: ", user)
-	log.Println("gameUser will be saved: ", gameUser)
-	log.Println("userGame will be saved: ", userGame)
-
+func userGameRegistration(registrationType int, user model.User, game model.Game, gameUser model.GameUser, userGame model.UserGame) error {
 	gameMap, err := dynamodbattribute.MarshalMap(game)
+	if err != nil {
+		return fmt.Errorf("marshal game: %w", err)
+	}
 	userMap, err := dynamodbattribute.MarshalMap(user)
+	if err != nil {
+		return fmt.Errorf("marshal user: %w", err)
+	}
 	gameUserMap, err := dynamodbattribute.MarshalMap(gameUser)
+	if err != nil {
+		return fmt.Errorf("marshal gameUser: %w", err)
+	}
 	userGameMap, err := dynamodbattribute.MarshalMap(userGame)
+	if err != nil {
+		return fmt.Errorf("marshal userGame: %w", err)
+	}
 
-	var registerGame Model.TransactionLog
+	var tx model.TransactionLog
 	if registrationType == 0 {
-		registerGame = RegisterGame(user.Id, game.Detail())
-	} else if registrationType == 1 {
-		registerGame = UnregisterGame(user.Id, game.Detail())
+		tx = RegisterGame(user.Id, game.Detail())
+	} else {
+		tx = UnregisterGame(user.Id, game.Detail())
 	}
-	txMap, err := dynamodbattribute.MarshalMap(registerGame)
-
-	// TODO: just checking the last err
+	txMap, err := dynamodbattribute.MarshalMap(tx)
 	if err != nil {
-		fmt.Println("Got error marshalling map: ", err.Error())
-		return err
+		return fmt.Errorf("marshal tx: %w", err)
 	}
-	_, err2 := db.TransactWriteItems(
-		&dynamodb.TransactWriteItemsInput{
-			TransactItems: []*dynamodb.TransactWriteItem{
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.GAMES),
-						Item:      gameMap,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.USERS),
-						Item:      userMap,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.GAME_USERS),
-						Item:      gameUserMap,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.USER_GAMES),
-						Item:      userGameMap,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.TRANSACTION_LOG),
-						Item:      txMap,
-					},
-				},
-			},
-		},
-	)
 
-	if err2 != nil {
-		fmt.Println("Got error calling transactional write: ", err2.Error())
-		return errors.New("beklenmeyen bir hata olustu")
+	_, err = db.TransactWriteItems(&dynamodb.TransactWriteItemsInput{
+		TransactItems: []*dynamodb.TransactWriteItem{
+			{Put: &dynamodb.Put{TableName: aws.String(tables.GAMES), Item: gameMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.USERS), Item: userMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.GAME_USERS), Item: gameUserMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.USER_GAMES), Item: userGameMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.TRANSACTION_LOG), Item: txMap}},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("transact write failed: %w", err)
 	}
 	return nil
 }
 
-func CompleteGame(operator string, game Model.Game, firstWinner Model.User, secondWinner Model.User, thirdWinner Model.User) error {
+func CompleteGame(operator string, game model.Game, first, second, third model.User) error {
 	gameMap, err := dynamodbattribute.MarshalMap(game)
-	firstMap, err := dynamodbattribute.MarshalMap(firstWinner)
-	secondMap, err := dynamodbattribute.MarshalMap(secondWinner)
-	thirdMap, err := dynamodbattribute.MarshalMap(thirdWinner)
-
-	tx1, err := dynamodbattribute.MarshalMap(WinGame(game, operator, firstWinner.Id, game.Award1st))
-	tx2, err := dynamodbattribute.MarshalMap(WinGame(game, operator, secondWinner.Id, game.Award2nd))
-	tx3, err := dynamodbattribute.MarshalMap(WinGame(game, operator, thirdWinner.Id, game.Award3rd))
-
-	// TODO: just checking the last err
 	if err != nil {
-		fmt.Println("Got error marshalling map: ", err.Error())
-		return err
+		return fmt.Errorf("marshal game: %w", err)
 	}
-	_, err2 := db.TransactWriteItems(
-		&dynamodb.TransactWriteItemsInput{
-			TransactItems: []*dynamodb.TransactWriteItem{
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.GAMES),
-						Item:      gameMap,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.USERS),
-						Item:      firstMap,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.USERS),
-						Item:      secondMap,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.USERS),
-						Item:      thirdMap,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.TRANSACTION_LOG),
-						Item:      tx1,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.TRANSACTION_LOG),
-						Item:      tx2,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.TRANSACTION_LOG),
-						Item:      tx3,
-					},
-				},
-			},
+	firstMap, err := dynamodbattribute.MarshalMap(first)
+	if err != nil {
+		return fmt.Errorf("marshal first winner: %w", err)
+	}
+	secondMap, err := dynamodbattribute.MarshalMap(second)
+	if err != nil {
+		return fmt.Errorf("marshal second winner: %w", err)
+	}
+	thirdMap, err := dynamodbattribute.MarshalMap(third)
+	if err != nil {
+		return fmt.Errorf("marshal third winner: %w", err)
+	}
+	tx1, err := dynamodbattribute.MarshalMap(WinGame(game, operator, first.Id, game.Award1st))
+	if err != nil {
+		return fmt.Errorf("marshal tx1: %w", err)
+	}
+	tx2, err := dynamodbattribute.MarshalMap(WinGame(game, operator, second.Id, game.Award2nd))
+	if err != nil {
+		return fmt.Errorf("marshal tx2: %w", err)
+	}
+	tx3, err := dynamodbattribute.MarshalMap(WinGame(game, operator, third.Id, game.Award3rd))
+	if err != nil {
+		return fmt.Errorf("marshal tx3: %w", err)
+	}
+
+	_, err = db.TransactWriteItems(&dynamodb.TransactWriteItemsInput{
+		TransactItems: []*dynamodb.TransactWriteItem{
+			{Put: &dynamodb.Put{TableName: aws.String(tables.GAMES), Item: gameMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.USERS), Item: firstMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.USERS), Item: secondMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.USERS), Item: thirdMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.TRANSACTION_LOG), Item: tx1}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.TRANSACTION_LOG), Item: tx2}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.TRANSACTION_LOG), Item: tx3}},
 		},
-	)
-	// TODO: just checking the last err
-	if err2 != nil {
-		fmt.Println("Got error marshalling map: ", err2.Error())
-		return errors.New("beklenmeyen bir hata olustu")
+	})
+	if err != nil {
+		return fmt.Errorf("transact write failed: %w", err)
 	}
 	return nil
 }
 
-func SaveGame(game Model.Game) error {
-	var gameUser Model.GameUser
+func SaveGame(game model.Game) error {
+	var gameUser model.GameUser
 	gameUser.GameId = game.Id
 
-	log.Println("game will be saved: ", game)
-	log.Println("gameUser will be saved: ", gameUser)
-
 	gameMap, err := dynamodbattribute.MarshalMap(game)
-	gameUserMap, err := dynamodbattribute.MarshalMap(gameUser)
-
-	// TODO: just checking the last err
 	if err != nil {
-		fmt.Println("Got error marshalling map: ", err.Error())
-		return err
+		return fmt.Errorf("marshal game: %w", err)
 	}
-	_, err2 := db.TransactWriteItems(
-		&dynamodb.TransactWriteItemsInput{
-			TransactItems: []*dynamodb.TransactWriteItem{
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.GAMES),
-						Item:      gameMap,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.GAME_USERS),
-						Item:      gameUserMap,
-					},
-				},
-			},
-		},
-	)
+	gameUserMap, err := dynamodbattribute.MarshalMap(gameUser)
+	if err != nil {
+		return fmt.Errorf("marshal gameUser: %w", err)
+	}
 
-	if err2 != nil {
-		fmt.Println("Got error calling transactional write: ", err2.Error())
-		return errors.New("beklenmeyen bir hata olustu")
+	_, err = db.TransactWriteItems(&dynamodb.TransactWriteItemsInput{
+		TransactItems: []*dynamodb.TransactWriteItem{
+			{Put: &dynamodb.Put{TableName: aws.String(tables.GAMES), Item: gameMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.GAME_USERS), Item: gameUserMap}},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("transact write failed: %w", err)
 	}
 	return nil
 }
 
-func SaveUser(user Model.User) error {
-	var userGame Model.UserGame
+func SaveUser(user model.User) error {
+	var userGame model.UserGame
 	userGame.UserId = user.Id
 
-	log.Println("user will be saved: ", user)
-	log.Println("userGame will be saved: ", userGame)
-
 	userMap, err := dynamodbattribute.MarshalMap(user)
-	userGameMap, err := dynamodbattribute.MarshalMap(userGame)
-
-	// TODO: just checking the last err
 	if err != nil {
-		fmt.Println("Got error marshalling map: ", err.Error())
-		return err
+		return fmt.Errorf("marshal user: %w", err)
 	}
-	_, err2 := db.TransactWriteItems(
-		&dynamodb.TransactWriteItemsInput{
-			TransactItems: []*dynamodb.TransactWriteItem{
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.USERS),
-						Item:      userMap,
-					},
-				},
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.USER_GAMES),
-						Item:      userGameMap,
-					},
-				},
-			},
-		},
-	)
+	userGameMap, err := dynamodbattribute.MarshalMap(userGame)
+	if err != nil {
+		return fmt.Errorf("marshal userGame: %w", err)
+	}
 
-	if err2 != nil {
-		fmt.Println("Got error calling transactional write: ", err2.Error())
-		return errors.New("beklenmeyen bir hata olustu")
+	_, err = db.TransactWriteItems(&dynamodb.TransactWriteItemsInput{
+		TransactItems: []*dynamodb.TransactWriteItem{
+			{Put: &dynamodb.Put{TableName: aws.String(tables.USERS), Item: userMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.USER_GAMES), Item: userGameMap}},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("transact write failed: %w", err)
 	}
-	//send slack message
 	SendMessageToChannel("customer-registered", "new user registered: "+user.Email)
 	return nil
 }
 
-func UpdateUserWithTx(user Model.User, tx Model.TransactionLog) error {
-	log.Println("user will be updated: ", user)
-
+func UpdateUserWithTx(user model.User, tx model.TransactionLog) error {
 	userMap, err := dynamodbattribute.MarshalMap(user)
-	// TODO: just checking the last err
 	if err != nil {
-		fmt.Println("Got error marshalling map: ", err.Error())
-		return err
+		return fmt.Errorf("marshal user: %w", err)
 	}
-
 	txMap, err := dynamodbattribute.MarshalMap(tx)
-	// TODO: just checking the last err
 	if err != nil {
-		fmt.Println("Got error marshalling map: ", err.Error())
-		return err
+		return fmt.Errorf("marshal tx: %w", err)
 	}
 
-	_, err2 := db.TransactWriteItems(
-		&dynamodb.TransactWriteItemsInput{
-			TransactItems: []*dynamodb.TransactWriteItem{
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.USERS),
-						Item:      userMap,
-					},
-				}, {
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.TRANSACTION_LOG),
-						Item:      txMap,
-					},
-				},
-			},
+	_, err = db.TransactWriteItems(&dynamodb.TransactWriteItemsInput{
+		TransactItems: []*dynamodb.TransactWriteItem{
+			{Put: &dynamodb.Put{TableName: aws.String(tables.USERS), Item: userMap}},
+			{Put: &dynamodb.Put{TableName: aws.String(tables.TRANSACTION_LOG), Item: txMap}},
 		},
-	)
-
-	if err2 != nil {
-		fmt.Println("Got error calling transactional write: ", err2.Error())
-		return errors.New("beklenmeyen bir hata olustu")
+	})
+	if err != nil {
+		return fmt.Errorf("transact write failed: %w", err)
 	}
 	return nil
 }
 
-func SaveTransactionLog(tx Model.TransactionLog) error {
-	log.Println("tx will be saved: ", tx)
+func SaveTransactionLog(tx model.TransactionLog) error {
 	txMap, err := dynamodbattribute.MarshalMap(tx)
 	if err != nil {
-		fmt.Println("Got error marshalling map: ", err.Error())
-		return err
+		return fmt.Errorf("marshal tx: %w", err)
 	}
-
-	_, err2 := db.TransactWriteItems(
-		&dynamodb.TransactWriteItemsInput{
-			TransactItems: []*dynamodb.TransactWriteItem{
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.TRANSACTION_LOG),
-						Item:      txMap,
-					},
-				},
-			},
+	_, err = db.TransactWriteItems(&dynamodb.TransactWriteItemsInput{
+		TransactItems: []*dynamodb.TransactWriteItem{
+			{Put: &dynamodb.Put{TableName: aws.String(tables.TRANSACTION_LOG), Item: txMap}},
 		},
-	)
-	if err2 != nil {
-		fmt.Println("Got error calling transactional write: ", err2.Error())
-		return errors.New("beklenmeyen bir hata olustu")
+	})
+	if err != nil {
+		return fmt.Errorf("transact write failed: %w", err)
 	}
 	return nil
 }
@@ -400,25 +275,15 @@ func SaveTransactionLog(tx Model.TransactionLog) error {
 func SaveMessage(messageMap map[string]interface{}) error {
 	msgMap, err := dynamodbattribute.MarshalMap(messageMap)
 	if err != nil {
-		fmt.Println("Got error marshalling map: ", err.Error())
-		return errors.New("Got error marshalling map: " + err.Error())
+		return fmt.Errorf("marshal message: %w", err)
 	}
-	_, err2 := db.TransactWriteItems(
-		&dynamodb.TransactWriteItemsInput{
-			TransactItems: []*dynamodb.TransactWriteItem{
-				{
-					Put: &dynamodb.Put{
-						TableName: aws.String(Tables.MESSAGES),
-						Item:      msgMap,
-					},
-				},
-			},
+	_, err = db.TransactWriteItems(&dynamodb.TransactWriteItemsInput{
+		TransactItems: []*dynamodb.TransactWriteItem{
+			{Put: &dynamodb.Put{TableName: aws.String(tables.MESSAGES), Item: msgMap}},
 		},
-	)
-
-	if err2 != nil {
-		fmt.Println("Got error calling transactional write: ", err2.Error())
-		return errors.New("beklenmeyen bir hata olustu")
+	})
+	if err != nil {
+		return fmt.Errorf("transact write failed: %w", err)
 	}
 	return nil
 }

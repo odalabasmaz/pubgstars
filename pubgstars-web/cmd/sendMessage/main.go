@@ -1,61 +1,49 @@
 package main
 
 import (
-	AwsUtils "../../internal"
-	DataService "../../internal"
-	ModelUtils "../../internal"
-	SlackService "../../internal"
 	"context"
-	"github.com/aws/aws-lambda-go/lambda"
-	"log"
+	"fmt"
 	"strconv"
+
+	"github.com/aws/aws-lambda-go/lambda"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
 )
 
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin !!")
-	//email := AwsUtils.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
-	httpMethod := event.Context["http-method"]
-	inputMap := event.Body
-	from := AwsUtils.CovertToString(inputMap["from"])
-	message := AwsUtils.CovertToString(inputMap["message"])
-	switch httpMethod {
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	from := svc.CovertToString(event.Body["from"])
+	message := svc.CovertToString(event.Body["message"])
+
+	switch event.Context["http-method"] {
 	case "POST":
 		return sendMessage(from, message), nil
 	default:
-		return AwsUtils.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + httpMethod}, nil
+		return svc.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + event.Context["http-method"]}, nil
 	}
 }
 
-func sendMessage(from string, message string) AwsUtils.Response {
-	isCustomer := false
-	user := AwsUtils.GetUserByEmail(from)
-	if user.Id != "" {
-		isCustomer = true
-	}
-	requestText := "Customer message received: \n" +
-		"\tIs Customer: [" + strconv.FormatBool(isCustomer) + "]\n" +
-		"\tFrom: [" + from + "]\n" +
-		"\tMessage: [" + message + "]"
+func sendMessage(from string, message string) svc.Response {
+	user := svc.GetUserByEmail(from)
+	isCustomer := user.Id != ""
 
-	// send message to slack
-	SlackService.SendMessage(requestText)
+	requestText := fmt.Sprintf("Customer message received:\n\tIs Customer: [%s]\n\tFrom: [%s]\n\tMessage: [%s]",
+		strconv.FormatBool(isCustomer), from, message)
+	svc.SendMessage(requestText)
 
-	// save to db
 	msgMap := map[string]interface{}{
-		"id":         ModelUtils.GenerateKey(10),
-		"dateTime":   AwsUtils.CurrentTimeMillis(),
+		"id":         svc.GenerateKey(10),
+		"dateTime":   svc.CurrentTimeMillis(),
 		"status":     "waiting",
 		"isCustomer": isCustomer,
 		"from":       from,
 		"message":    message,
 	}
-	if err := DataService.SaveMessage(msgMap); err != nil {
-		return AwsUtils.Response{StatusCode: 400, ErrorMessage: err.Error()}
+	if err := svc.SaveMessage(msgMap); err != nil {
+		return svc.Response{StatusCode: 400, ErrorMessage: err.Error()}
 	}
-	return AwsUtils.Response{StatusCode: 200, Body: "ok"}
+	return svc.Response{StatusCode: 200, Body: "ok"}
 }
 
 func main() {
-	//sendMessage("odalabasmaz+pg1@gmail.com", "msg")
 	lambda.Start(Handler)
 }

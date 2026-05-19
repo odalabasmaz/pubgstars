@@ -1,33 +1,28 @@
 package main
 
 import (
-	AwsUtils "../../internal"
-	DataService "../../internal"
 	"context"
-	"github.com/aws/aws-lambda-go/lambda"
 	"log"
+
+	"github.com/aws/aws-lambda-go/lambda"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
 )
 
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin !!")
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	email := svc.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
+	user := svc.GetUserByEmail(email)
 
-	/// TX Begin
-	email := AwsUtils.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
-	user := AwsUtils.GetUserByEmail(email)
+	gameId := svc.CovertToString(event.Body["id"])
+	game := svc.GetGameById(gameId)
 
-	gameMap := event.Body
-	gameId := AwsUtils.CovertToString(gameMap["id"])
-	game := AwsUtils.GetGameById(gameId)
-
-	e := DataService.RegisterUserToGame(user, game)
-	if e != nil {
-		return AwsUtils.Response{StatusCode: 400, ErrorMessage: e.Error()}, nil
+	if err := svc.RegisterUserToGame(user, game); err != nil {
+		return svc.Response{StatusCode: 400, ErrorMessage: err.Error()}, nil
 	}
-	/// TX End
-
-	return AwsUtils.Response{StatusCode: 200}, nil
+	return svc.Response{StatusCode: 200}, nil
 }
 
 func main() {
+	log.Println("registerToGame starting")
 	lambda.Start(Handler)
 }

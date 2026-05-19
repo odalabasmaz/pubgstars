@@ -1,7 +1,7 @@
 package main
 
 import (
-	Tables "../model/tables"
+	tables "github.com/odalabasmaz/pubgstars/pubgstars-web/model/tables"
 	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
@@ -53,13 +53,13 @@ func main() {
 	//addNewItem(db)
 	//listGames(db)
 
-	//createTableWithHashKeyAndRangeKey(db, Tables.GAMES, "id", "gameDate")
-	//createTableWithHashKey(db, Tables.GAMES, "id")
+	//createTableWithHashKeyAndRangeKey(db, tables.GAMES, "id", "gameDate")
+	//createTableWithHashKey(db, tables.GAMES, "id")
 	//createTableWithHashKey(db, "userRegistered", "id")
-	//createTableWithHashKey(db, Tables.GAME_USERS, "gameId")
-	//createTableWithHashKey(db, Tables.USER_GAMES, "userId")
-	//createTableWithHashKeyAndRangeKey(db, Tables.TRANSACTION_LOG, "id", "userId")
-	createTableWithHashKeyAndRangeKey(db, Tables.MESSAGES, "id", "from")
+	//createTableWithHashKey(db, tables.GAME_USERS, "gameId")
+	//createTableWithHashKey(db, tables.USER_GAMES, "userId")
+	//createTableWithHashKeyAndRangeKey(db, tables.TRANSACTION_LOG, "id", "userId")
+	createTableWithHashKeyAndRangeKey(db, tables.MESSAGES, "id", "from")
 
 	//addNewItem(db)
 }
@@ -67,7 +67,7 @@ func main() {
 // TODO: consider pagination...
 func listGames(db *dynamodb.DynamoDB) {
 	params := &dynamodb.ScanInput{
-		TableName: aws.String(Tables.GAMES),
+		TableName: aws.String(tables.GAMES),
 	}
 	result, err := db.Scan(params)
 	if err != nil {
@@ -115,7 +115,7 @@ func listGames2(db *dynamodb.DynamoDB) {
 	params := &dynamodb.ScanInput{
 		FilterExpression:     expr.Filter(),
 		ProjectionExpression: expr.Projection(),
-		TableName:            aws.String(Tables.GAMES),
+		TableName:            aws.String(tables.GAMES),
 	}
 
 	// Make the DynamoDB Query API call
@@ -179,7 +179,7 @@ func addItem(db *dynamodb.DynamoDB, game Game) {
 	// Create item in table Movies
 	input := &dynamodb.PutItemInput{
 		Item:      av,
-		TableName: aws.String(Tables.GAMES),
+		TableName: aws.String(tables.GAMES),
 	}
 
 	// todo put item unique
@@ -214,14 +214,10 @@ func createTableWithHashKeyAndRangeKey(db *dynamodb.DynamoDB, tableName string, 
 				KeyType:       aws.String("RANGE"),
 			},
 		},
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(1),
-			WriteCapacityUnits: aws.Int64(1),
-		},
-		TableName: aws.String(tableName),
+		BillingMode: aws.String(dynamodb.BillingModePayPerRequest),
+		TableName:   aws.String(tableName),
 	}
 
-	//todo: learn
 	var err error
 	_, err = db.CreateTable(input)
 	if err != nil {
@@ -246,14 +242,10 @@ func createTableWithHashKey(db *dynamodb.DynamoDB, tableName string, hashKey str
 				KeyType:       aws.String("HASH"),
 			},
 		},
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(1),
-			WriteCapacityUnits: aws.Int64(1),
-		},
-		TableName: aws.String(tableName),
+		BillingMode: aws.String(dynamodb.BillingModePayPerRequest),
+		TableName:   aws.String(tableName),
 	}
 
-	//todo: learn
 	var err error
 	_, err = db.CreateTable(input)
 	if err != nil {

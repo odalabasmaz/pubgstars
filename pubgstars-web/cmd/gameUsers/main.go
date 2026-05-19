@@ -1,42 +1,35 @@
 package main
 
 import (
-	AwsUtils "../../internal"
-	Model "../../model"
 	"context"
-	"github.com/aws/aws-lambda-go/lambda"
 	"log"
+
+	"github.com/aws/aws-lambda-go/lambda"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model"
 )
 
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin !!")
-	//operator := AwsUtils.GetUsernameFromJwtTokenForAdmin(event.Params["header"]["Authorization"])
-	httpMethod := event.Context["http-method"]
-	gameMap := event.Body
-	gameId := AwsUtils.CovertToString(gameMap["id"])
-
-	switch httpMethod {
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	gameId := svc.CovertToString(event.Body["id"])
+	switch event.Context["http-method"] {
 	case "POST":
-		return AwsUtils.Response{StatusCode: 200, Body: listGameUsers(gameId)}, nil
+		return svc.Response{StatusCode: 200, Body: listGameUsers(gameId)}, nil
 	default:
-		return AwsUtils.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + httpMethod}, nil
+		return svc.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + event.Context["http-method"]}, nil
 	}
 }
 
-func listGameUsers(gameId string) []Model.User {
-	var users []Model.User
-	userIds := AwsUtils.GetGameUsersByGameId(gameId).Users
-	for _, userId := range userIds {
+func listGameUsers(gameId string) []model.User {
+	var users []model.User
+	for _, userId := range svc.GetGameUsersByGameId(gameId).Users {
 		log.Println(userId)
-		user := AwsUtils.GetUserById(userId)
-		var userTemp Model.User
-		userTemp.Username = user.Username
-		users = append(users, userTemp)
+		user := svc.GetUserById(userId)
+		users = append(users, model.User{Username: user.Username})
 	}
 	return users
 }
 
 func main() {
-	//listGameUsers("6SyTSCalGW")
 	lambda.Start(Handler)
 }
