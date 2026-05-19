@@ -2,6 +2,9 @@
   "name": "pubgstars-app",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=18 <21"
+  },
   "dependencies": {
     "aws-amplify": "^5.3.21",
     "axios": "^1.7.9",

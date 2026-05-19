@@ -214,14 +214,10 @@ func createTableWithHashKeyAndRangeKey(db *dynamodb.DynamoDB, tableName string, 
 				KeyType:       aws.String("RANGE"),
 			},
 		},
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(1),
-			WriteCapacityUnits: aws.Int64(1),
-		},
-		TableName: aws.String(tableName),
+		BillingMode: aws.String(dynamodb.BillingModePayPerRequest),
+		TableName:   aws.String(tableName),
 	}
 
-	//todo: learn
 	var err error
 	_, err = db.CreateTable(input)
 	if err != nil {
@@ -246,14 +242,10 @@ func createTableWithHashKey(db *dynamodb.DynamoDB, tableName string, hashKey str
 				KeyType:       aws.String("HASH"),
 			},
 		},
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(1),
-			WriteCapacityUnits: aws.Int64(1),
-		},
-		TableName: aws.String(tableName),
+		BillingMode: aws.String(dynamodb.BillingModePayPerRequest),
+		TableName:   aws.String(tableName),
 	}
 
-	//todo: learn
 	var err error
 	_, err = db.CreateTable(input)
 	if err != nil {

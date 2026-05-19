@@ -9,8 +9,8 @@ echo "## Deploying ${MODULE} ..."
 pushd .
 echo "## building.."
 cd ../cmd/${MODULE}/ || exit 1
-GOOS=linux go build -o main main.go
-zip main.zip main
+GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+zip bootstrap.zip bootstrap
 
 # create lambda if necessary
 #echo "## creating lambda if necessary..."
@@ -24,11 +24,11 @@ zip main.zip main
 echo "## deploying lambda function.."
 aws lambda update-function-code \
     --function-name arn:aws:lambda:eu-central-1:470936150750:function:${FUNCTION_NAME} \
-    --zip-file fileb://./main.zip \
+    --zip-file fileb://./bootstrap.zip \
     --profile pg
 
 echo "## cleaning artifacts.."
-rm -f main main.zip
+rm -f bootstrap bootstrap.zip
 popd || exit 1
 
 echo "## done."

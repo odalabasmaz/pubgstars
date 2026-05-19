@@ -216,7 +216,7 @@ All backend compute is Lambda; there are no long-running servers.
 | Tool | Version | Notes |
 |---|---|---|
 | Go | 1.22+ | `brew install go` |
-| Node.js | 18+ | `brew install node` |
+| Node.js | 18–20 | `react-scripts 5` does not support Node 21+; use `nvm use` (`.nvmrc` provided) |
 | AWS CLI | v2 | `brew install awscli` |
 
 Configure an AWS CLI profile named `pg` (used by the build scripts):
