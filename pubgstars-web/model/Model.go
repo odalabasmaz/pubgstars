@@ -44,8 +44,8 @@ type User struct {
 	Username       string  `json:"username"`
 	Email          string  `json:"email"`
 	Phone          string  `json:"phone"`
-	SecretQuestion string  `json:"secretPhrase"`
-	SecretAnswer   string  `json:"secretPhrase"`
+	SecretQuestion string  `json:"secretQuestion"`
+	SecretAnswer   string  `json:"secretAnswer"`
 	Status         string  `json:"status"`
 	Balance        float64 `json:"balance"`
 	Bonus          float64 `json:"bonus"`

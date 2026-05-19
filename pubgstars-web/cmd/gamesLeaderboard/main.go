@@ -1,46 +1,40 @@
 package main
 
 import (
-	AwsUtils "../../internal"
-	Model "../../model"
 	"context"
-	"github.com/aws/aws-lambda-go/lambda"
 	"log"
 	"sort"
+
+	"github.com/aws/aws-lambda-go/lambda"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model"
 )
 
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin games leaderboard!!")
-
-	httpMethod := event.Context["http-method"]
-	switch httpMethod {
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	switch event.Context["http-method"] {
 	case "GET":
-		return AwsUtils.Response{StatusCode: 200, Body: listGamesLeaderboard()}, nil
+		return svc.Response{StatusCode: 200, Body: listGamesLeaderboard()}, nil
 	default:
-		return AwsUtils.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + httpMethod}, nil
+		return svc.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + event.Context["http-method"]}, nil
 	}
 }
 
-func listGamesLeaderboard() []Model.User {
-	users, err := AwsUtils.ListUsers()
+func listGamesLeaderboard() []model.User {
+	users, err := svc.ListUsers()
 	if err != nil {
-		return users
+		log.Println("listGamesLeaderboard error:", err)
+		return nil
 	}
-
-	// sort
 	sort.Slice(users, func(i, j int) bool {
 		return users[i].Gain > users[j].Gain
 	})
-
-	// take top 3
 	if len(users) > 3 {
 		return users[:3]
-	} else {
-		return users
 	}
+	return users
 }
 
 func main() {
-	//listGamesLeaderboard()
 	lambda.Start(Handler)
 }

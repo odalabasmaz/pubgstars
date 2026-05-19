@@ -1,45 +1,42 @@
 package main
 
 import (
-	AwsUtils "../../internal"
-	Model "../../model"
 	"context"
 	"fmt"
+	"log"
+
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	"log"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model"
 )
 
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin !!")
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	email := svc.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
+	log.Println("username found:", email)
 
-	email := AwsUtils.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
-	log.Println("username found: " + email)
-
-	httpMethod := event.Context["http-method"]
-	switch httpMethod {
+	switch event.Context["http-method"] {
 	case "GET":
-		return AwsUtils.Response{StatusCode: 200, Body: getUserDetails(email)}, nil
+		return svc.Response{StatusCode: 200, Body: getUserDetails(email)}, nil
 	default:
-		return AwsUtils.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + httpMethod}, nil
+		return svc.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + event.Context["http-method"]}, nil
 	}
 }
 
-func getUserDetails(email string) Model.User {
+func getUserDetails(email string) model.User {
 	filt := expression.Name("email").Equal(expression.Value(email))
 	expr, err := expression.NewBuilder().WithFilter(filt).Build()
 	if err != nil {
 		fmt.Println(err)
 	}
-	user, err := AwsUtils.GetUserDetails(expr)
+	user, err := svc.GetUserDetails(expr)
 	if err != nil {
-		fmt.Println("Got error unmarshalling:")
-		fmt.Println(err.Error())
+		log.Printf("getUserDetails error: %v", err)
 	}
 	return user
 }
 
 func main() {
-	//getUserDetails("odalabasmaz+pg1@gmail.com")
 	lambda.Start(Handler)
 }

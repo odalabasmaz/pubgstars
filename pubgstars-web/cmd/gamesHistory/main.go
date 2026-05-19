@@ -1,43 +1,40 @@
 package main
 
 import (
-	AwsUtils "../../internal"
-	Model "../../model"
-	Tables "../../model/tables"
 	"context"
 	"fmt"
+	"log"
+
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	"log"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model"
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model/tables"
 )
 
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin gamesHistory!!")
-
-	httpMethod := event.Context["http-method"]
-	switch httpMethod {
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	switch event.Context["http-method"] {
 	case "GET":
-		return AwsUtils.Response{StatusCode: 200, Body: listGamesHistory()}, nil
+		return svc.Response{StatusCode: 200, Body: listGamesHistory()}, nil
 	default:
-		return AwsUtils.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + httpMethod}, nil
+		return svc.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + event.Context["http-method"]}, nil
 	}
 }
 
-func listGamesHistory() []Model.Game {
+func listGamesHistory() []model.Game {
 	filt := expression.Name("status").Equal(expression.Value("completed"))
 	expr, err := expression.NewBuilder().WithFilter(filt).Build()
 	if err != nil {
 		fmt.Println(err)
 	}
-	games, err := AwsUtils.ListGames(Tables.GAMES, expr)
+	games, err := svc.ListGames(tables.GAMES, expr)
 	if err != nil {
-		fmt.Println(err)
-		return games
+		log.Println("listGamesHistory error:", err)
 	}
 	return games
 }
 
 func main() {
-	//listGamesHistory()
 	lambda.Start(Handler)
 }

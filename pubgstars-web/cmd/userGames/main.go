@@ -1,62 +1,56 @@
 package main
 
 import (
-	AwsUtils "../../internal"
-	GameUtils "../../internal"
-	Model "../../model"
-	Tables "../../model/tables"
 	"context"
 	"fmt"
+	"log"
+
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	"log"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model"
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model/tables"
 )
 
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin !!")
-	email := AwsUtils.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
-	log.Println("username found: " + email)
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	email := svc.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
+	log.Println("username found:", email)
 
-	httpMethod := event.Context["http-method"]
-	switch httpMethod {
+	switch event.Context["http-method"] {
 	case "GET":
-		return AwsUtils.Response{StatusCode: 200, Body: listUserGames(email)}, nil
+		return svc.Response{StatusCode: 200, Body: listUserGames(email)}, nil
 	default:
-		return AwsUtils.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + httpMethod}, nil
+		return svc.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + event.Context["http-method"]}, nil
 	}
 }
 
-func listUserGames(email string) []Model.Game {
+func listUserGames(email string) []model.Game {
 	filt := expression.Name("status").Equal(expression.Value("active"))
 	expr, err := expression.NewBuilder().WithFilter(filt).Build()
 	if err != nil {
 		fmt.Println(err)
 	}
-	games, err := AwsUtils.ListGames(Tables.GAMES, expr)
-
+	games, err := svc.ListGames(tables.GAMES, expr)
 	if err != nil {
-		log.Println("Error occurred.")
-		log.Println(err)
-	} else if len(games) != 0 {
-		user := AwsUtils.GetUserByEmail(email)
-		userGame := AwsUtils.GetUserGamesByUserId(user.Id)
+		log.Println("listUserGames error:", err)
+		return nil
+	}
 
-		//TODO: pass by reference??
-		for i, game := range games {
-			for _, gameId := range userGame.Games {
-				if game.Id == gameId {
-					games[i].Registered = true
-					games[i].ShowPassword = GameUtils.IsGameInLastHour(game)
-					break
-				}
+	user := svc.GetUserByEmail(email)
+	userGame := svc.GetUserGamesByUserId(user.Id)
+	for i, game := range games {
+		for _, gameId := range userGame.Games {
+			if game.Id == gameId {
+				games[i].Registered = true
+				games[i].ShowPassword = svc.IsGameInLastHour(game)
+				break
 			}
 		}
 	}
-
 	return games
 }
 
 func main() {
-	//listUserGames("odalabasmaz+pg1@gmail.com")
 	lambda.Start(Handler)
 }

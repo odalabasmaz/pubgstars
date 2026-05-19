@@ -1,13 +1,14 @@
 package internal
 
 import (
-	Model "../model"
 	"time"
+
+	"github.com/odalabasmaz/pubgstars/pubgstars-web/model"
 )
 
 var location, _ = time.LoadLocation("Europe/Istanbul")
 
-func IsGameInLastHour(game Model.Game) bool {
+func IsGameInLastHour(game model.Game) bool {
 	currentTime := time.Now().In(location)
 	gameDate, _ := time.ParseInLocation("200601021504", game.GameDate, location)
 	gameDateMinus1h := gameDate.Add(-1 * time.Hour)
@@ -15,14 +16,14 @@ func IsGameInLastHour(game Model.Game) bool {
 	return currentTime.After(gameDateMinus1h) && currentTime.Before(gameDatePlus1h)
 }
 
-func IsGameCancellable(game Model.Game) bool {
+func IsGameCancellable(game model.Game) bool {
 	currentTime := time.Now().In(location)
 	gameDate, _ := time.ParseInLocation("200601021504", game.GameDate, location)
 	gameDateMinus1h := gameDate.Add(-1 * time.Hour)
 	return currentTime.Before(gameDateMinus1h)
 }
 
-func IsGameDateValid(game Model.Game) bool {
+func IsGameDateValid(game model.Game) bool {
 	currentTime := time.Now().In(location)
 	gameDate, _ := time.ParseInLocation("200601021504", game.GameDate, location)
 	return currentTime.Before(gameDate)

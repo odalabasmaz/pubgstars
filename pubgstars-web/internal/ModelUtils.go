@@ -1,16 +1,18 @@
 package internal
 
 import (
-	"math/rand"
-	"time"
+	"crypto/rand"
+	"math/big"
 )
 
-func GenerateKey(n int8) string {
-	var source = rand.NewSource(time.Now().UnixNano())
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+const keyCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+
+func GenerateKey(n int) string {
 	key := make([]byte, n)
+	charsetLen := big.NewInt(int64(len(keyCharset)))
 	for i := range key {
-		key[i] = charset[source.Int63()%int64(len(charset))]
+		idx, _ := rand.Int(rand.Reader, charsetLen)
+		key[i] = keyCharset[idx.Int64()]
 	}
 	return string(key)
 }

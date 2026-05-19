@@ -1,51 +1,40 @@
 package main
 
 import (
-	AwsUtils "../../internal"
 	"context"
-	"github.com/aws/aws-lambda-go/lambda"
 	"log"
 	"time"
+
+	"github.com/aws/aws-lambda-go/lambda"
+
+	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
 )
 
-func Handler(ctx context.Context, event AwsUtils.RequestEvent) (AwsUtils.Response, error) {
-	log.Println("begin show password !!")
+func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+	email := svc.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
+	gameId := svc.CovertToString(event.Body["id"])
+	game := svc.GetGameById(gameId)
 
-	email := AwsUtils.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
-	gameMap := event.Body
-	gameId := AwsUtils.CovertToString(gameMap["id"])
-
-	game := AwsUtils.GetGameById(gameId)
 	location, _ := time.LoadLocation("Europe/Istanbul")
 	now := time.Now().In(location)
-	log.Print(now)
 	gameDate, err := time.ParseInLocation("200601021504", game.GameDate, location)
-	log.Print(gameDate)
-
 	if err != nil {
-		return AwsUtils.Response{StatusCode: 400, ErrorMessage: "Oyun tarihi geçersiz"}, err
+		return svc.Response{StatusCode: 400, ErrorMessage: "Oyun tarihi geçersiz"}, nil
 	}
+	log.Printf("gameDate: %v, now: %v", gameDate, now)
 
 	if gameDate.After(now.Add(1 * time.Hour)) {
-		return AwsUtils.Response{StatusCode: 400, ErrorMessage: "Oyun saatine 1 saatten fazla süre bulunmaktadır. Şifre alınamaz!"}, err
+		return svc.Response{StatusCode: 400, ErrorMessage: "Oyun saatine 1 saatten fazla süre bulunmaktadır. Şifre alınamaz!"}, nil
 	}
 
-	user := AwsUtils.GetUserByEmail(email)
-	userId := user.Id
-	userGame := AwsUtils.GetUserGamesByUserId(userId)
-	found := false
-	for _, gameId := range userGame.Games {
-		if game.Id == gameId {
-			found = true
-			break
+	user := svc.GetUserByEmail(email)
+	userGame := svc.GetUserGamesByUserId(user.Id)
+	for _, gid := range userGame.Games {
+		if game.Id == gid {
+			return svc.Response{StatusCode: 200, Body: game}, nil
 		}
 	}
-	if !found {
-		return AwsUtils.Response{StatusCode: 400, ErrorMessage: "Şifreyi Görebilmek için oyuna kayıtlı olanız gerekmektedir"}, err
-
-	}
-
-	return AwsUtils.Response{StatusCode: 200, Body: game}, nil
+	return svc.Response{StatusCode: 400, ErrorMessage: "Şifreyi görebilmek için oyuna kayıtlı olmanız gerekmektedir"}, nil
 }
 
 func main() {

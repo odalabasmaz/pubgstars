@@ -209,6 +209,184 @@ All backend compute is Lambda; there are no long-running servers.
 
 ---
 
+## Deploying to AWS
+
+### Prerequisites
+
+| Tool | Version | Notes |
+|---|---|---|
+| Go | 1.22+ | `brew install go` |
+| Node.js | 18+ | `brew install node` |
+| AWS CLI | v2 | `brew install awscli` |
+
+Configure an AWS CLI profile named `pg` (used by the build scripts):
+
+```bash
+aws configure --profile pg
+# Default region: eu-central-1
+```
+
+---
+
+### 1. Cognito User Pool
+
+Create a Cognito User Pool with the following custom attributes:
+- `custom:secretQuestion` (String)
+- `custom:secretAnswer` (String)
+
+Create an **App Client** (no client secret). Note the:
+- User Pool ID
+- App Client ID
+- Identity Pool ID (create a Cognito Identity Pool linked to the User Pool)
+
+Set these in `pubgstars-web-static/.env`:
+
+```
+REACT_APP_COGNITO_REGION=eu-central-1
+REACT_APP_COGNITO_USER_POOL_ID=<your-user-pool-id>
+REACT_APP_COGNITO_APP_CLIENT_ID=<your-app-client-id>
+REACT_APP_COGNITO_IDENTITY_POOL_ID=<your-identity-pool-id>
+```
+
+---
+
+### 2. DynamoDB Tables
+
+Run the provisioning script to create all required tables:
+
+```bash
+cd pubgstars-web/scripts
+AWS_PROFILE=pg go run database.go
+```
+
+Tables created (all in `eu-central-1`, on-demand billing):
+
+| Table | Hash key | Range key |
+|---|---|---|
+| `games` | `id` | — |
+| `users` | `id` | — |
+| `gameUsers` | `gameId` | — |
+| `userGames` | `userId` | — |
+| `transactionLog` | `id` | `userId` |
+| `messages` | `id` | `from` |
+
+---
+
+### 3. IAM Role for Lambda
+
+Create an IAM role named `lambda-service-role` with a trust policy for `lambda.amazonaws.com` and the following managed policies:
+- `AWSLambdaBasicExecutionRole`
+- `AmazonDynamoDBFullAccess`
+
+Note the role ARN — you will need it in the build script.
+
+---
+
+### 4. Lambda Functions (Backend)
+
+First, resolve Go module dependencies:
+
+```bash
+cd pubgstars-web
+go mod tidy
+```
+
+Set the required environment variables on each Lambda function via the AWS Console or CLI:
+
+| Variable | Description |
+|---|---|
+| `SLACK_TOKEN` | Slack bot token (Bot Token Scopes: `chat:write`) |
+| `CHANNEL_NAME` | Default Slack channel for notifications |
+
+Deploy all Lambda functions:
+
+```bash
+cd pubgstars-web/scripts
+./buildAndUploadAll.sh
+```
+
+Or deploy a single function:
+
+```bash
+./buildAndUpload.sh games
+```
+
+The script cross-compiles to `linux/amd64`, zips the binary, and calls `aws lambda update-function-code`. The Lambda functions must already exist — create them once via the console or CLI:
+
+```bash
+aws lambda create-function \
+  --function-name games \
+  --runtime provided.al2023 \
+  --role arn:aws:iam::<account-id>:role/lambda-service-role \
+  --handler bootstrap \
+  --zip-file fileb://main.zip \
+  --region eu-central-1 \
+  --profile pg
+```
+
+Attach the **Cognito post-confirmation trigger** to `userRegistered` and the **pre sign-up trigger** to `canUserRegister` in the User Pool settings.
+
+---
+
+### 5. API Gateway
+
+Create a REST API (`api.pubgstars.com`) with the following resources, each backed by the corresponding Lambda function:
+
+| Path | Methods | Lambda |
+|---|---|---|
+| `/games` | GET, POST, PUT, DELETE | `games` |
+| `/games/password` | POST | `gamePassword` |
+| `/games/users` | POST | `gameUsers` |
+| `/games/register` | POST | `registerToGame` |
+| `/games/unregister` | POST | `unregisterToGame` |
+| `/games/history` | GET | `gamesHistory` |
+| `/games/leaderboard` | GET | `gamesLeaderboard` |
+| `/user` | GET | `user` |
+| `/user/games` | GET | `userGames` |
+| `/user/transactionlog` | GET | `transactionLog` |
+| `/user/depositmoney` | POST | `depositMoney` |
+| `/user/withdraw` | POST | `withdrawMoney` |
+| `/user/sendmessage` | POST | `sendMessage` |
+| `/admin/games` | GET, POST, PUT, DELETE | `adminGames` |
+| `/admin/games/users` | GET | `adminGameUsers` |
+| `/admin/users` | GET | `adminUsers` |
+| `/admin/messages` | GET, POST | `adminMessages` |
+| `/admin/completegame` | POST | `adminCompleteGame` |
+| `/admin/addbudget` | POST | `adminAddBudget` |
+
+Enable **Lambda Proxy integration** on each method. Enable **CORS** on all resources. Deploy to a stage named `v1`.
+
+The API Gateway passes the event to Lambda as a `RequestEvent`:
+```json
+{
+  "body-json": { ... },
+  "params": { "header": { "Authorization": "..." }, "querystring": {} },
+  "context": { "http-method": "GET" }
+}
+```
+
+---
+
+### 6. Frontend (React SPA)
+
+```bash
+cd pubgstars-web-static
+cp .env.example .env
+# fill in Cognito values
+npm install
+npm run build
+```
+
+Sync to S3:
+
+```bash
+aws s3 sync build s3://pubgstars.com/ --profile pg
+```
+
+Set up the S3 bucket for static website hosting and point your CloudFront distribution or DNS to it.
+
+---
+
 ## License
 
 [MIT](LICENSE)
