@@ -1,0 +1,3 @@
+# Exclude the React frontend from GitHub language stats.
+# The primary language of this project is Go (backend Lambda functions).
+pubgstars-web-static/** linguist-detectable=false
