@@ -115,25 +115,25 @@ const (
 )
 
 var TRANSACTION_MAP = map[TransactionType]string{
-	BALANCE: "Bakiye",
-	GAME:    "Oyun",
-	ACCOUNT: "Hesap",
+	BALANCE: "Balance",
+	GAME:    "Game",
+	ACCOUNT: "Account",
 	ADMIN:   "Admin",
 }
 
 var SUB_TRANSACTION_MAP = map[SubTransactionType]string{
-	BALANCE_DEPOSIT:         "Para yukleme",
-	BALANCE_WITHDRAW:        "Para cekme",
-	BALANCE_REGISTER_GAME:   "Oyun kayit",
-	BALANCE_UNREGISTER_GAME: "Oyun iptal",
-	BALANCE_LOAD:            "Bakiye yukleme",
-	GAME_REGISTER:           "Oyun kayit",
-	GAME_UNREGISTER:         "Oyun iptal",
-	GAME_WIN:                "Oyun kazanan",
-	ACCOUNT_ACTIVATE:        "Hesap aktiflestirme",
-	ACCOUNT_DEACTIVATE:      "Hesap kapama",
-	ACCOUNT_CHANGE_PASSWORD: "Parola degisikligi",
-	ACCOUNT_FORGET_PASSWORD: "Parolami unuttum",
+	BALANCE_DEPOSIT:         "Deposit",
+	BALANCE_WITHDRAW:        "Withdrawal",
+	BALANCE_REGISTER_GAME:   "Game registration",
+	BALANCE_UNREGISTER_GAME: "Game cancellation",
+	BALANCE_LOAD:            "Balance load",
+	GAME_REGISTER:           "Game registration",
+	GAME_UNREGISTER:         "Game cancellation",
+	GAME_WIN:                "Game win",
+	ACCOUNT_ACTIVATE:        "Account activation",
+	ACCOUNT_DEACTIVATE:      "Account deactivation",
+	ACCOUNT_CHANGE_PASSWORD: "Password change",
+	ACCOUNT_FORGET_PASSWORD: "Forgot password",
 }
 
 type TransactionLog struct {

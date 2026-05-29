@@ -23,15 +23,15 @@ func RegisterUserToGame(user model.User, game model.Game) error {
 
 	for _, g := range userGames.Games {
 		if game.Id == g {
-			return errors.New("oyuna zaten kayitlisiniz")
+			return errors.New("you are already registered to this game")
 		}
 	}
 
 	if user.GetAvailableBalance() < game.Price {
-		return errors.New("oyun icin yeterli bakiyeniz bulunmamakta")
+		return errors.New("insufficient balance for this game")
 	}
 	if !IsGameDateValid(game) {
-		return errors.New("oyun tarihi gecerli degil")
+		return errors.New("game date is not valid")
 	}
 
 	gameUsers.Users = append(gameUsers.Users, user.Id)
@@ -39,7 +39,7 @@ func RegisterUserToGame(user model.User, game model.Game) error {
 	game.RegisteredUserCount += game.TeamPlayerCount
 
 	if game.RegisteredUserCount > 100 {
-		return errors.New("oyunda boş yer bulunmamaktadır")
+		return errors.New("no available spots in this game")
 	}
 
 	game.TotalIncome += game.Price
@@ -57,16 +57,16 @@ func RegisterUserToGame(user model.User, game model.Game) error {
 func UnregisterUserToGame(user model.User, game model.Game) error {
 	log.Println("userGameUnregistration...")
 	if !IsGameCancellable(game) {
-		return errors.New("bu oyunun tarihi gectigi icin iptal edemezsiniz")
+		return errors.New("cannot cancel this game as the game date has passed")
 	}
 
 	gameUsers := GetGameUsersByGameId(game.Id)
 	userGames := GetUserGamesByUserId(user.Id)
 
 	if !Contains(userGames.Games, game.Id) {
-		log.Printf("bu oyuna kayitli degilisiniz, userId: %s, gameId: %s, userGames: %s",
+		log.Printf("user not registered to game, userId: %s, gameId: %s, userGames: %s",
 			user.Id, game.Id, strings.Join(userGames.Games, ","))
-		return errors.New("bu oyuna kayitli degilisiniz")
+		return errors.New("you are not registered to this game")
 	}
 
 	game.RegisteredUserCount -= game.TeamPlayerCount

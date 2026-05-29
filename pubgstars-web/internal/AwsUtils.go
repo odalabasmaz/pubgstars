@@ -68,8 +68,12 @@ func ConvertMillisToString(millis int64) string {
 }
 
 func GetUsernameFromJwtToken(jwtToken string) string {
-	jwtPayload := strings.Split(jwtToken, ".")[1]
-	bytes, err := base64.RawURLEncoding.DecodeString(jwtPayload)
+	parts := strings.Split(jwtToken, ".")
+	if len(parts) < 2 {
+		log.Printf("malformed JWT token")
+		return ""
+	}
+	bytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		log.Printf("failed to decode JWT: %v", err)
 		return ""
@@ -83,8 +87,12 @@ func GetUsernameFromJwtToken(jwtToken string) string {
 }
 
 func GetUsernameFromJwtTokenForAdmin(jwtToken string) string {
-	jwtPayload := strings.Split(jwtToken, ".")[1]
-	bytes, err := base64.RawURLEncoding.DecodeString(jwtPayload)
+	parts := strings.Split(jwtToken, ".")
+	if len(parts) < 2 {
+		log.Printf("malformed JWT token")
+		return ""
+	}
+	bytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		log.Printf("failed to decode JWT: %v", err)
 		return ""

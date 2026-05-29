@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GODIR="pubgstars-web"
+
+echo "==> go build ./..."
+(cd "$GODIR" && go build ./...)
+
+echo "==> go test ./..."
+(cd "$GODIR" && go test ./...)
+
+echo "==> pre-commit checks passed"

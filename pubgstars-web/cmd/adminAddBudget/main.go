@@ -21,29 +21,34 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 
 		balanceFloat, err := strconv.ParseFloat(balance, 64)
 		if err != nil {
-			return svc.Response{StatusCode: 400, ErrorMessage: "Yatirilmak istenen bakiye tutari [" + balance + "] geçersiz!"}, nil
+			return svc.Response{StatusCode: 400, ErrorMessage: "The balance amount to be deposited [" + balance + "] is invalid!"}, nil
 		}
 		bonusFloat, err := strconv.ParseFloat(bonus, 64)
 		if err != nil {
-			return svc.Response{StatusCode: 400, ErrorMessage: "Yatirilmak istenen bonus tutari [" + bonus + "] geçersiz!"}, nil
+			return svc.Response{StatusCode: 400, ErrorMessage: "The bonus amount to be deposited [" + bonus + "] is invalid!"}, nil
 		}
 
-		return svc.Response{StatusCode: 200, Body: addBalanceToUser(operator, userId, balanceFloat, bonusFloat)}, nil
+		user, err := addBalanceToUser(operator, userId, balanceFloat, bonusFloat)
+		if err != nil {
+			log.Printf("addBalanceToUser error: %v", err)
+			return svc.Response{StatusCode: 500, ErrorMessage: "Failed to update user balance"}, nil
+		}
+		return svc.Response{StatusCode: 200, Body: user}, nil
 	default:
 		return svc.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + event.Context["http-method"]}, nil
 	}
 }
 
-func addBalanceToUser(operator string, userId string, balance float64, bonus float64) model.User {
+func addBalanceToUser(operator string, userId string, balance float64, bonus float64) (model.User, error) {
 	user := svc.GetUserById(userId)
 	user.Balance += balance
 	user.Bonus += bonus
 
 	tx := svc.AddBalance(operator, user.Id, balance, bonus)
 	if err := svc.UpdateUserWithTx(user, tx); err != nil {
-		log.Printf("addBalanceToUser error: %v", err)
+		return model.User{}, err
 	}
-	return user
+	return user, nil
 }
 
 func main() {
