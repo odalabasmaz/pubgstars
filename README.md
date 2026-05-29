@@ -117,6 +117,13 @@ pubgstars-web/
 
 ### Local development
 
+After cloning, activate the pre-commit hooks (runs `go build` + `go test` before every commit):
+
+```bash
+cd pubgstars-web
+make setup
+```
+
 ```bash
 # Build a single function
 cd scripts
