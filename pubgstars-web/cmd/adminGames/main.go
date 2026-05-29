@@ -24,14 +24,34 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 	case "GET":
 		status := event.Params["querystring"]["status"]
 		if status != "" {
-			return svc.Response{StatusCode: 200, Body: listGamesWithStatus(status)}, nil
+			games, err := listGamesWithStatus(status)
+			if err != nil {
+				log.Println("listGamesWithStatus error:", err)
+				return svc.Response{StatusCode: 500, ErrorMessage: "Failed to list games"}, nil
+			}
+			return svc.Response{StatusCode: 200, Body: games}, nil
 		}
-		return svc.Response{StatusCode: 200, Body: listGames()}, nil
+		games, err := listGames()
+		if err != nil {
+			log.Println("listGames error:", err)
+			return svc.Response{StatusCode: 500, ErrorMessage: "Failed to list games"}, nil
+		}
+		return svc.Response{StatusCode: 200, Body: games}, nil
 	case "PUT", "POST":
 		if event.Body["id"] == nil {
-			return svc.Response{StatusCode: 200, Body: addGame(event.Body, operator)}, nil
+			games, err := addGame(event.Body, operator)
+			if err != nil {
+				log.Println("addGame error:", err)
+				return svc.Response{StatusCode: 500, ErrorMessage: "Failed to add game"}, nil
+			}
+			return svc.Response{StatusCode: 200, Body: games}, nil
 		}
-		return svc.Response{StatusCode: 200, Body: updateGame(event.Body, operator)}, nil
+		games, err := updateGame(event.Body, operator)
+		if err != nil {
+			log.Println("updateGame error:", err)
+			return svc.Response{StatusCode: 500, ErrorMessage: "Failed to update game"}, nil
+		}
+		return svc.Response{StatusCode: 200, Body: games}, nil
 	case "DELETE":
 		return deleteGame(event.Body, operator)
 	default:
@@ -39,29 +59,21 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 	}
 }
 
-func listGames() []model.Game {
+func listGames() ([]model.Game, error) {
 	expr, err := expression.NewBuilder().Build()
 	if err != nil {
-		fmt.Println(err)
+		return nil, fmt.Errorf("build expression: %w", err)
 	}
-	games, err := svc.ListGamesWithPassword(tables.GAMES, expr)
-	if err != nil {
-		log.Println("listGames error:", err)
-	}
-	return games
+	return svc.ListGamesWithPassword(tables.GAMES, expr)
 }
 
-func listGamesWithStatus(status string) []model.Game {
+func listGamesWithStatus(status string) ([]model.Game, error) {
 	filt := expression.Name("status").Equal(expression.Value(status))
 	expr, err := expression.NewBuilder().WithFilter(filt).Build()
 	if err != nil {
-		fmt.Println(err)
+		return nil, fmt.Errorf("build expression: %w", err)
 	}
-	games, err := svc.ListGamesWithPassword(tables.GAMES, expr)
-	if err != nil {
-		log.Println("listGamesWithStatus error:", err)
-	}
-	return games
+	return svc.ListGamesWithPassword(tables.GAMES, expr)
 }
 
 func deleteGame(gameMap map[string]interface{}, operator string) (svc.Response, error) {
@@ -74,7 +86,7 @@ func deleteGame(gameMap map[string]interface{}, operator string) (svc.Response, 
 	return svc.Response{StatusCode: 200, Body: games}, nil
 }
 
-func addGame(gameMap map[string]interface{}, operator string) []model.Game {
+func addGame(gameMap map[string]interface{}, operator string) ([]model.Game, error) {
 	now := svc.CurrentTimeMillis()
 	gameMap["id"] = svc.GenerateKey(10)
 	gameMap["roomPassword"] = svc.GenerateKey(8)
@@ -87,19 +99,21 @@ func addGame(gameMap map[string]interface{}, operator string) []model.Game {
 	return updateGame(gameMap, operator)
 }
 
-func updateGame(gameMap map[string]interface{}, operator string) []model.Game {
+func updateGame(gameMap map[string]interface{}, operator string) ([]model.Game, error) {
 	gameMap["updatedAt"] = svc.CurrentTimeMillis()
 	gameMap["updatedBy"] = operator
-	games, err := saveGame(gameMap)
-	if err != nil {
-		log.Println("updateGame error:", err)
-	}
-	return games
+	return saveGame(gameMap)
 }
 
 func saveGame(gameMap map[string]interface{}) ([]model.Game, error) {
-	gameId := gameMap["id"].(string)
-	status := gameMap["status"].(string)
+	gameId, ok := gameMap["id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("game id is missing or not a string")
+	}
+	status, ok := gameMap["status"].(string)
+	if !ok {
+		return nil, fmt.Errorf("game status is missing or not a string")
+	}
 
 	if status == "cancelled" || status == "deleted" {
 		game := svc.GetGameById(gameId)

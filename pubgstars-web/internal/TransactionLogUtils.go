@@ -44,7 +44,7 @@ func WithdrawMoney(userId string, iban string, amount string) model.TransactionL
 	tx := BaseTransaction(userId)
 	tx.TransactionType = model.BALANCE
 	tx.SubTransactionType = model.BALANCE_WITHDRAW
-	tx.Detail = iban + " numaralı hesaba " + amount + " TL aktarım talebi alınmıştır"
+	tx.Detail = "Withdrawal request of " + amount + " TL to IBAN " + iban + " has been received"
 	return tx
 }
 
@@ -52,7 +52,7 @@ func DepositMoney(userId string, amount string, description string) model.Transa
 	tx := BaseTransaction(userId)
 	tx.TransactionType = model.BALANCE
 	tx.SubTransactionType = model.BALANCE_DEPOSIT
-	tx.Detail = userId + " numaralı hesaba " + amount + " TL yatırım talebi alınmıştır. Açıklama: " + description
+	tx.Detail = "Deposit request of " + amount + " TL for account " + userId + " has been received. Description: " + description
 	return tx
 }
 
@@ -61,11 +61,11 @@ func AddBalance(operator string, userId string, balance float64, bonus float64) 
 	tx.TransactionType = model.BALANCE
 	tx.SubTransactionType = model.BALANCE_LOAD
 	if balance > 0 && bonus > 0 {
-		tx.Detail = "Hesabiniza " + fmt.Sprintf("%.2f", balance) + " TL bakiye ve " + fmt.Sprintf("%.2f", bonus) + " TL bonus yuklenmistir"
+		tx.Detail = fmt.Sprintf("%.2f TL balance and %.2f TL bonus have been loaded to your account", balance, bonus)
 	} else if balance > 0 {
-		tx.Detail = "Hesabiniza " + fmt.Sprintf("%.2f", balance) + " TL bakiye yuklenmistir"
+		tx.Detail = fmt.Sprintf("%.2f TL balance has been loaded to your account", balance)
 	} else if bonus > 0 {
-		tx.Detail = "Hesabiniza " + fmt.Sprintf("%.2f", bonus) + " TL bonus yuklenmistir"
+		tx.Detail = fmt.Sprintf("%.2f TL bonus has been loaded to your account", bonus)
 	}
 	return tx
 }
@@ -74,7 +74,7 @@ func WinGame(game model.Game, operator string, userId string, award float64) mod
 	tx := BaseTransactionWithOperator(userId, operator)
 	tx.TransactionType = model.GAME
 	tx.SubTransactionType = model.GAME_WIN
-	tx.Detail = "Oyunu kazandiniz!\n" + game.Detail() + "\n" + fmt.Sprintf("%.2f", award) + " TL odul bakiyenize yuklendi."
+	tx.Detail = "You won the game!\n" + game.Detail() + "\n" + fmt.Sprintf("%.2f TL prize has been loaded to your balance.", award)
 	return tx
 }
 

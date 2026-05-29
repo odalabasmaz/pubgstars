@@ -22,74 +22,102 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 	log.Println("games handler:", event.Context["http-method"])
 	switch event.Context["http-method"] {
 	case "GET":
-		return svc.Response{StatusCode: 200, Body: listActiveGames()}, nil
+		games, err := listActiveGames()
+		if err != nil {
+			log.Println("listActiveGames error:", err)
+			return svc.Response{StatusCode: 500, ErrorMessage: "Failed to list games"}, nil
+		}
+		return svc.Response{StatusCode: 200, Body: games}, nil
 	case "PUT", "POST":
 		email := svc.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
 		if event.Body["id"] == nil {
-			return svc.Response{StatusCode: 200, Body: addGame(event.Body, email)}, nil
+			games, err := addGame(event.Body, email)
+			if err != nil {
+				log.Println("addGame error:", err)
+				return svc.Response{StatusCode: 400, ErrorMessage: err.Error()}, nil
+			}
+			return svc.Response{StatusCode: 200, Body: games}, nil
 		}
-		return svc.Response{StatusCode: 200, Body: updateGame(event.Body, email)}, nil
+		games, err := updateGame(event.Body, email)
+		if err != nil {
+			log.Println("updateGame error:", err)
+			return svc.Response{StatusCode: 500, ErrorMessage: "Failed to update game"}, nil
+		}
+		return svc.Response{StatusCode: 200, Body: games}, nil
 	case "DELETE":
-		return svc.Response{StatusCode: 200, Body: deleteGame(event.Body)}, nil
+		games, err := deleteGame(event.Body)
+		if err != nil {
+			log.Println("deleteGame error:", err)
+			return svc.Response{StatusCode: 500, ErrorMessage: "Failed to delete game"}, nil
+		}
+		return svc.Response{StatusCode: 200, Body: games}, nil
 	default:
 		return svc.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + event.Context["http-method"]}, nil
 	}
 }
 
-func listActiveGames() []model.Game {
+func listActiveGames() ([]model.Game, error) {
 	filt := expression.Name("status").Equal(expression.Value("active"))
 	expr, err := expression.NewBuilder().WithFilter(filt).Build()
 	if err != nil {
-		fmt.Println(err)
+		return nil, fmt.Errorf("build expression: %w", err)
 	}
-	games, err := svc.ListGames(tables.GAMES, expr)
-	if err != nil {
-		log.Println("listActiveGames error:", err)
-	}
-	return games
+	return svc.ListGames(tables.GAMES, expr)
 }
 
-func deleteGame(gameMap map[string]interface{}) []model.Game {
+func deleteGame(gameMap map[string]interface{}) ([]model.Game, error) {
 	gameMap["status"] = "deleted"
-	games, err := saveGame(gameMap)
-	if err != nil {
-		log.Println("deleteGame error:", err)
-	}
-	return games
+	return saveGame(gameMap)
 }
 
-func addGame(gameMap map[string]interface{}, email string) []model.Game {
-	var game model.Game
-	game.Id = svc.GenerateKey(10)
-	game.RoomPassword = svc.GenerateKey(8)
-	game.Status = "active"
-	game.RegisteredUserCount = 0
+func addGame(gameMap map[string]interface{}, email string) ([]model.Game, error) {
+	gameDate, ok := gameMap["gameDate"].(string)
+	if !ok {
+		return nil, fmt.Errorf("gameDate is missing or not a string")
+	}
+	league, ok := gameMap["league"].(string)
+	if !ok {
+		return nil, fmt.Errorf("league is missing or not a string")
+	}
+	gameType, ok := gameMap["type"].(string)
+	if !ok {
+		return nil, fmt.Errorf("type is missing or not a string")
+	}
+	gameMap2, ok := gameMap["map"].(string)
+	if !ok {
+		return nil, fmt.Errorf("map is missing or not a string")
+	}
+	price, ok := gameMap["price"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("price is missing or not a number")
+	}
+
 	now := svc.CurrentTimeMillis()
-	game.InsertedAt = now
-	game.InsertedBy = email
-	game.UpdatedAt = now
-	game.UpdatedBy = email
-	game.GameDate = gameMap["gameDate"].(string)
-	game.League = gameMap["league"].(string)
-	game.Type = gameMap["type"].(string)
-	game.Map = gameMap["map"].(string)
-	game.Price = gameMap["price"].(float64)
+	game := model.Game{
+		Id:           svc.GenerateKey(10),
+		RoomPassword: svc.GenerateKey(8),
+		Status:       "active",
+		InsertedAt:   now,
+		InsertedBy:   email,
+		UpdatedAt:    now,
+		UpdatedBy:    email,
+		GameDate:     gameDate,
+		League:       league,
+		Type:         gameType,
+		Map:          gameMap2,
+		Price:        price,
+	}
 
 	if err := svc.SaveGame(game); err != nil {
-		log.Println("addGame error:", err)
-		return nil
+		return nil, err
 	}
-	return []model.Game{game}
+	return []model.Game{game}, nil
 }
 
-func updateGame(gameMap map[string]interface{}, email string) []model.Game {
+func updateGame(gameMap map[string]interface{}, email string) ([]model.Game, error) {
 	gameMap["updatedAt"] = svc.CurrentTimeMillis()
 	gameMap["updatedBy"] = email
-	games, err := saveGame(gameMap)
-	if err != nil {
-		log.Println("updateGame error:", err)
-	}
-	return games
+	return saveGame(gameMap)
 }
 
 func saveGame(gameMap map[string]interface{}) ([]model.Game, error) {

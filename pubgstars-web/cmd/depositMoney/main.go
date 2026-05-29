@@ -18,7 +18,7 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 
 	amountFloat, err := strconv.ParseFloat(amount, 64)
 	if err != nil {
-		return svc.Response{StatusCode: 400, ErrorMessage: "Yuklenmek istenen tutar geçersiz!"}, nil
+		return svc.Response{StatusCode: 400, ErrorMessage: "The deposit amount is invalid!"}, nil
 	}
 
 	user := svc.GetUserByEmail(email)
@@ -31,7 +31,7 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 	if err := svc.UpdateUserWithTx(user, tx); err != nil {
 		log.Printf("depositMoney transaction error: %v", err)
 		svc.SendMessage("!!! " + requestText)
-		return svc.Response{StatusCode: 500, ErrorMessage: "Beklenmeyen bir hata oluştu!"}, nil
+		return svc.Response{StatusCode: 500, ErrorMessage: "An unexpected error occurred!"}, nil
 	}
 	return svc.Response{StatusCode: 200}, nil
 }

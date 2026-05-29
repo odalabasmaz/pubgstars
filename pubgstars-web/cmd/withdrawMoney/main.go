@@ -21,18 +21,18 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 
 	amountFloat, err := strconv.ParseFloat(amount, 64)
 	if err != nil {
-		return svc.Response{StatusCode: 400, ErrorMessage: "Çekilmek istenen tutar geçersiz!"}, nil
+		return svc.Response{StatusCode: 400, ErrorMessage: "The withdrawal amount is invalid!"}, nil
 	}
 	if amountFloat < 100 {
-		return svc.Response{StatusCode: 400, ErrorMessage: "Çekilmek istenen tutar en az 100₺ olmalidir!"}, nil
+		return svc.Response{StatusCode: 400, ErrorMessage: "The withdrawal amount must be at least 100₺!"}, nil
 	}
 
 	user := svc.GetUserByEmail(email)
 	if user.SecretQuestion != secretQuestion || user.SecretAnswer != secretAnswer {
-		return svc.Response{StatusCode: 400, ErrorMessage: "Gizli soru veya cevabı yanlış."}, nil
+		return svc.Response{StatusCode: 400, ErrorMessage: "Secret question or answer is incorrect."}, nil
 	}
 	if user.Balance < amountFloat {
-		return svc.Response{StatusCode: 400, ErrorMessage: "Yetersiz Bakiye!"}, nil
+		return svc.Response{StatusCode: 400, ErrorMessage: "Insufficient balance!"}, nil
 	}
 
 	user.Balance -= amountFloat
@@ -45,7 +45,7 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 	if err := svc.UpdateUserWithTx(user, tx); err != nil {
 		log.Printf("withdrawMoney transaction error: %v", err)
 		svc.SendMessage("!!! " + requestText)
-		return svc.Response{StatusCode: 500, ErrorMessage: "Beklenmeyen Hata Oluştu!"}, nil
+		return svc.Response{StatusCode: 500, ErrorMessage: "An unexpected error occurred!"}, nil
 	}
 	return svc.Response{StatusCode: 200}, nil
 }

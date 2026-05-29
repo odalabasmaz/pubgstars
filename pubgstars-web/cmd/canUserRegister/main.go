@@ -17,7 +17,7 @@ func Handler(event events.CognitoEventUserPoolsPreSignup) (events.CognitoEventUs
 	if svc.UserExistsByUsername(username) {
 		return event, nil
 	}
-	return event, errors.New("Girilen Kullanıcı Adı başka bir kullanıcı tarafından kullanılmaktadır!")
+	return event, errors.New("the entered username is already taken by another user")
 }
 
 func main() {

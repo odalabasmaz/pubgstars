@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -13,21 +14,41 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 	operator := svc.GetUsernameFromJwtTokenForAdmin(event.Params["header"]["Authorization"])
 	switch event.Context["http-method"] {
 	case "POST":
-		return svc.Response{StatusCode: 200, Body: completeGame(event.Body, operator)}, nil
+		if err := completeGame(event.Body, operator); err != nil {
+			log.Printf("completeGame error: %v", err)
+			return svc.Response{StatusCode: 400, ErrorMessage: err.Error()}, nil
+		}
+		return svc.Response{StatusCode: 200}, nil
 	default:
 		return svc.Response{StatusCode: 405, ErrorMessage: "unsupported operation: " + event.Context["http-method"]}, nil
 	}
 }
 
-func completeGame(gameMap map[string]interface{}, operator string) interface{} {
-	gameId := gameMap["gameId"].(string)
+func completeGame(gameMap map[string]interface{}, operator string) error {
+	gameId, ok := gameMap["gameId"].(string)
+	if !ok {
+		return fmt.Errorf("gameId is missing or not a string")
+	}
+	firstWinnerId, ok := gameMap["firstWinner"].(string)
+	if !ok {
+		return fmt.Errorf("firstWinner is missing or not a string")
+	}
+	secondWinnerId, ok := gameMap["secondWinner"].(string)
+	if !ok {
+		return fmt.Errorf("secondWinner is missing or not a string")
+	}
+	thirdWinnerId, ok := gameMap["thirdWinner"].(string)
+	if !ok {
+		return fmt.Errorf("thirdWinner is missing or not a string")
+	}
+
 	game := svc.GetGameById(gameId)
 	game.UpdatedAt = svc.CurrentTimeMillis()
 	game.UpdatedBy = operator
 	game.Status = "completed"
-	game.Winner1st = gameMap["firstWinner"].(string)
-	game.Winner2nd = gameMap["secondWinner"].(string)
-	game.Winner3rd = gameMap["thirdWinner"].(string)
+	game.Winner1st = firstWinnerId
+	game.Winner2nd = secondWinnerId
+	game.Winner3rd = thirdWinnerId
 
 	firstWinner := svc.GetUserById(game.Winner1st)
 	firstWinner.Balance += game.Award1st
@@ -41,11 +62,7 @@ func completeGame(gameMap map[string]interface{}, operator string) interface{} {
 	thirdWinner.Balance += game.Award3rd
 	thirdWinner.Gain += game.Award3rd
 
-	if err := svc.CompleteGame(operator, game, firstWinner, secondWinner, thirdWinner); err != nil {
-		log.Printf("completeGame error: %v", err)
-		return err.Error()
-	}
-	return nil
+	return svc.CompleteGame(operator, game, firstWinner, secondWinner, thirdWinner)
 }
 
 func main() {

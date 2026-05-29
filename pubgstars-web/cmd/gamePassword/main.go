@@ -19,12 +19,12 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 	now := time.Now().In(location)
 	gameDate, err := time.ParseInLocation("200601021504", game.GameDate, location)
 	if err != nil {
-		return svc.Response{StatusCode: 400, ErrorMessage: "Oyun tarihi geçersiz"}, nil
+		return svc.Response{StatusCode: 400, ErrorMessage: "Game date is invalid"}, nil
 	}
 	log.Printf("gameDate: %v, now: %v", gameDate, now)
 
 	if gameDate.After(now.Add(1 * time.Hour)) {
-		return svc.Response{StatusCode: 400, ErrorMessage: "Oyun saatine 1 saatten fazla süre bulunmaktadır. Şifre alınamaz!"}, nil
+		return svc.Response{StatusCode: 400, ErrorMessage: "There is more than 1 hour until the game starts. Password cannot be retrieved!"}, nil
 	}
 
 	user := svc.GetUserByEmail(email)
@@ -34,7 +34,7 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 			return svc.Response{StatusCode: 200, Body: game}, nil
 		}
 	}
-	return svc.Response{StatusCode: 400, ErrorMessage: "Şifreyi görebilmek için oyuna kayıtlı olmanız gerekmektedir"}, nil
+	return svc.Response{StatusCode: 400, ErrorMessage: "You must be registered to the game to view the password"}, nil
 }
 
 func main() {
