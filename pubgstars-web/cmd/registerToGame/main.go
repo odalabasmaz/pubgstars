@@ -9,14 +9,18 @@ import (
 	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
 )
 
-func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+type App struct {
+	store svc.Store
+}
+
+func (a *App) Handle(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
 	email := svc.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
-	user := svc.GetUserByEmail(email)
+	user := a.store.GetUserByEmail(email)
 
 	gameId := svc.CovertToString(event.Body["id"])
-	game := svc.GetGameById(gameId)
+	game := a.store.GetGameById(gameId)
 
-	if err := svc.RegisterUserToGame(user, game); err != nil {
+	if err := a.store.RegisterUserToGame(user, game); err != nil {
 		return svc.Response{StatusCode: 400, ErrorMessage: err.Error()}, nil
 	}
 	return svc.Response{StatusCode: 200}, nil
@@ -24,5 +28,6 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 
 func main() {
 	log.Println("registerToGame starting")
-	lambda.Start(Handler)
+	app := &App{store: svc.NewDynamoStore()}
+	lambda.Start(app.Handle)
 }

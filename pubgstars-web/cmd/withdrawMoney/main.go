@@ -11,7 +11,11 @@ import (
 	svc "github.com/odalabasmaz/pubgstars/pubgstars-web/internal"
 )
 
-func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
+type App struct {
+	store svc.Store
+}
+
+func (a *App) Handle(ctx context.Context, event svc.RequestEvent) (svc.Response, error) {
 	email := svc.GetUsernameFromJwtToken(event.Params["header"]["Authorization"])
 	amount := svc.CovertToString(event.Body["amount"])
 	iban := svc.CovertToString(event.Body["iban"])
@@ -27,7 +31,7 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 		return svc.Response{StatusCode: 400, ErrorMessage: "The withdrawal amount must be at least 100₺!"}, nil
 	}
 
-	user := svc.GetUserByEmail(email)
+	user := a.store.GetUserByEmail(email)
 	if user.SecretQuestion != secretQuestion || user.SecretAnswer != secretAnswer {
 		return svc.Response{StatusCode: 400, ErrorMessage: "Secret question or answer is incorrect."}, nil
 	}
@@ -42,7 +46,7 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 		email, nameSurname, iban, amountFloat)
 	svc.SendMessage(requestText)
 
-	if err := svc.UpdateUserWithTx(user, tx); err != nil {
+	if err := a.store.UpdateUserWithTx(user, tx); err != nil {
 		log.Printf("withdrawMoney transaction error: %v", err)
 		svc.SendMessage("!!! " + requestText)
 		return svc.Response{StatusCode: 500, ErrorMessage: "An unexpected error occurred!"}, nil
@@ -51,5 +55,6 @@ func Handler(ctx context.Context, event svc.RequestEvent) (svc.Response, error) 
 }
 
 func main() {
-	lambda.Start(Handler)
+	app := &App{store: svc.NewDynamoStore()}
+	lambda.Start(app.Handle)
 }
