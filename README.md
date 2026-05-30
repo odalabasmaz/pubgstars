@@ -2,7 +2,7 @@
 
 A full-stack platform for organizing paid PUBG tournament sessions. Players deposit balance, register for scheduled game rooms, receive room credentials shortly before kick-off, and winners collect prize money — all handled automatically.
 
-Built on a fully serverless AWS stack. The UI targets Turkish-speaking players; backend logic and code are in English.
+Built on a fully serverless AWS stack.
 
 ---
 
@@ -38,12 +38,12 @@ pubgstars/
 
 ## Backend — `pubgstars-web`
 
-**Language:** Go  
+**Language:** Go 1.22+  
 **Runtime:** AWS Lambda (one binary per endpoint)  
 **Database:** AWS DynamoDB  
 **Auth:** AWS Cognito — JWT tokens validated in each handler  
-**Notifications:** Slack API (new registrations posted to a channel)  
-**Deployment:** Cross-compiled to `linux/amd64`, zipped, and uploaded with `aws lambda update-function-code`
+**Notifications:** Slack API  
+**Deployment:** Cross-compiled to `linux/amd64`, zipped, uploaded with `aws lambda update-function-code`
 
 ### Lambda functions
 
@@ -55,25 +55,25 @@ pubgstars/
 | `registerToGame` | POST | Register the caller; deducts entry fee atomically |
 | `unregisterToGame` | POST | Unregister (refunds as bonus if before cutoff) |
 | `gamesHistory` | GET | Completed game history |
-| `gamesLeaderboard` | GET | All-time winner leaderboard |
+| `gamesLeaderboard` | GET | Top-3 all-time winner leaderboard |
 | `user` | GET | Current user profile |
 | `userGames` | GET | Games the caller is registered for |
-| `canUserRegister` | GET | Username availability check |
+| `canUserRegister` | — | Cognito pre sign-up trigger: username availability check |
 | `depositMoney` | POST | Record a deposit request |
 | `withdrawMoney` | POST | Request a withdrawal (requires secret answer) |
-| `transactionLog` | GET | Full balance + game history for the caller |
+| `transactionLog` | GET | Full transaction history for the caller |
 | `sendMessage` | POST | Submit a support message |
-| `adminGames` | GET / POST | Admin: list all games, create new sessions |
+| `adminGames` | GET / POST / PUT / DELETE | Admin: manage all game sessions |
 | `adminCompleteGame` | POST | Admin: mark complete, credit prize money to winners |
 | `adminGameUsers` | GET | Admin: view registrations per game |
 | `adminUsers` | GET | Admin: list all users |
-| `adminMessages` | GET | Admin: view support messages |
+| `adminMessages` | GET / POST | Admin: view and respond to support messages |
 | `adminAddBudget` | POST | Admin: manually credit balance / bonus to a user |
 | `userRegistered` | — | Cognito post-confirmation trigger: creates user record |
 
 ### DynamoDB tables
 
-| Table | Key | Purpose |
+| Table | Hash key | Purpose |
 |---|---|---|
 | `games` | `id` | Tournament sessions |
 | `users` | `id` | User profiles (balance, bonus, gain) |
@@ -93,26 +93,32 @@ pubgstars/
 
 ```
 pubgstars-web/
-├── cmd/                  # One main.go per Lambda function
+├── cmd/                        # One main.go per Lambda function
 │   ├── games/
 │   ├── registerToGame/
 │   ├── adminCompleteGame/
 │   └── ...
 ├── internal/
-│   ├── AwsUtils.go       # DynamoDB client, JWT parsing, time helpers
-│   ├── DataService.go    # All DynamoDB read/write operations
-│   ├── GameUtils.go      # Time-window logic for passwords / cancellation
-│   ├── SlackService.go   # Slack notifications
-│   ├── ModelUtils.go     # ID generation, misc utilities
-│   ├── TransactionLogUtils.go
-│   └── LoggerService.go
+│   ├── AwsUtils.go             # DynamoDB client, JWT parsing, time helpers
+│   ├── DataService.go          # DynamoDB read/write operations
+│   ├── GameUtils.go            # Time-window logic (passwords, cancellation)
+│   ├── SlackService.go         # Slack notifications
+│   ├── ModelUtils.go           # ID generation, misc utilities
+│   ├── TransactionLogUtils.go  # Transaction log builders
+│   ├── store.go                # Store interface (dependency injection)
+│   └── dynamo_store.go         # DynamoDB implementation of Store
 ├── model/
-│   ├── Model.go          # Game, User, TransactionLog, Message structs
-│   └── tables/Tables.go  # DynamoDB table name constants
+│   ├── Model.go                # Game, User, TransactionLog, Message structs
+│   └── tables/Tables.go        # DynamoDB table name constants
+├── testutil/
+│   └── mock_store.go           # MockStore for handler unit tests
+├── test/
+│   └── game_test.go            # Model serialisation tests
 ├── scripts/
-│   ├── buildAndUpload.sh     # Build + deploy a single Lambda
-│   └── buildAndUploadAll.sh  # Build + deploy all Lambdas
-└── pkg/                  # Shared logger / printer utilities
+│   ├── buildAndUpload.sh       # Build + deploy a single Lambda
+│   ├── buildAndUploadAll.sh    # Build + deploy all Lambdas
+│   └── database.go             # DynamoDB table provisioning
+└── pkg/                        # Shared logger / printer utilities
 ```
 
 ### Local development
@@ -125,33 +131,45 @@ make setup
 ```
 
 ```bash
-# Build a single function
-cd scripts
-./buildAndUpload.sh games
-
-# Build and deploy all functions
-./buildAndUploadAll.sh
-
-# Run with local DynamoDB (requires AWS CLI profile named 'pg')
-isForTest=true go run cmd/games/main.go
+make build   # go build ./...
+make test    # go test ./...
 ```
 
-Required environment variables:
+### Testing
 
-```
-SLACK_TOKEN=        # Slack bot token
-CHANNEL_NAME=       # Target Slack channel (e.g. #customer-requests)
+```bash
+# Unit and handler tests (no external dependencies)
+go test ./...
+
+# Integration tests against DynamoDB Local
+docker compose -f docker-compose.test.yml up -d
+go test -tags integration ./internal/
+docker compose -f docker-compose.test.yml down
 ```
 
-See `pubgstars-web/.env.example` for the full list.
+| Test type | Coverage | Dependencies |
+|---|---|---|
+| Unit | Pure functions — time logic, JWT parsing, transaction builders, model | None |
+| Handler unit | Lambda handler routing, input validation, error responses | MockStore |
+| Integration | DynamoDB read/write — SaveGame, SaveUser, Register/Unregister, UpdateUserWithTx | DynamoDB Local (Docker) |
+
+Integration tests skip automatically if DynamoDB Local is not running.
+
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `SLACK_TOKEN` | Slack bot token (`chat:write` scope) |
+| `CHANNEL_NAME` | Default Slack channel for notifications |
+| `AWS_PROFILE` | AWS CLI profile name (local development only) |
 
 ---
 
 ## Frontend — `pubgstars-web-static`
 
-**Framework:** React (Create React App)  
+**Framework:** React 18 (Create React App)  
 **Auth:** AWS Amplify + Cognito  
-**HTTP:** Axios — all calls go to `https://api.pubgstars.com/v1`  
+**HTTP:** Axios  
 **UI:** React-Bootstrap  
 **Deployment:** `npm run build` → `aws s3 sync build s3://pubgstars.com/`
 
@@ -164,7 +182,7 @@ See `pubgstars-web/.env.example` for the full list.
 | `/leaderboard` | LeaderBoard | All-time rankings |
 | `/balance` | Balance | Deposit and withdraw funds |
 | `/transactionlog` | TransactionLog | Full transaction history |
-| `/profile` | Profile | Account details and password change |
+| `/profile` | Profile | Account details |
 | `/login` | Login | Cognito sign-in |
 | `/signup` | Signup | Registration (username, email, password, secret Q&A) |
 | `/login/reset` | ResetPassword | Cognito forgot-password flow |
@@ -179,20 +197,18 @@ See `pubgstars-web/.env.example` for the full list.
 cd pubgstars-web-static
 cp .env.example .env      # fill in Cognito values
 npm install
-npm start
+npm start                 # http://localhost:3000
 ```
 
-Required environment variables (Create React App — must be prefixed `REACT_APP_`):
+Required environment variables (must be prefixed `REACT_APP_`):
 
-```
-REACT_APP_STAGE=dev
-REACT_APP_COGNITO_REGION=eu-central-1
-REACT_APP_COGNITO_USER_POOL_ID=
-REACT_APP_COGNITO_APP_CLIENT_ID=
-REACT_APP_COGNITO_IDENTITY_POOL_ID=
-```
-
-See `pubgstars-web-static/.env.example`.
+| Variable | Description |
+|---|---|
+| `REACT_APP_STAGE` | Environment name (`dev` / `prod`) |
+| `REACT_APP_COGNITO_REGION` | AWS region |
+| `REACT_APP_COGNITO_USER_POOL_ID` | Cognito User Pool ID |
+| `REACT_APP_COGNITO_APP_CLIENT_ID` | Cognito App Client ID |
+| `REACT_APP_COGNITO_IDENTITY_POOL_ID` | Cognito Identity Pool ID |
 
 ---
 
@@ -209,7 +225,8 @@ Browser
         ├─► Lambda (Go) ──► Cognito (JWT validation)
         └─► Lambda (Go) ──► Slack API
 
-Cognito User Pool ──► post-confirmation trigger ──► userRegistered Lambda
+Cognito User Pool ──► pre sign-up trigger    ──► canUserRegister Lambda
+                  └─► post-confirmation trigger ──► userRegistered Lambda
 ```
 
 All backend compute is Lambda; there are no long-running servers.
@@ -225,8 +242,9 @@ All backend compute is Lambda; there are no long-running servers.
 | Go | 1.22+ | `brew install go` |
 | Node.js | 18–20 | `react-scripts 5` does not support Node 21+; use `nvm use` (`.nvmrc` provided) |
 | AWS CLI | v2 | `brew install awscli` |
+| Docker | any | Integration tests only |
 
-Configure an AWS CLI profile named `pg` (used by the build scripts):
+Configure an AWS CLI profile named `pg`:
 
 ```bash
 aws configure --profile pg
@@ -241,25 +259,16 @@ Create a Cognito User Pool with the following custom attributes:
 - `custom:secretQuestion` (String)
 - `custom:secretAnswer` (String)
 
-Create an **App Client** (no client secret). Note the:
+Create an **App Client** (no client secret) and note the:
 - User Pool ID
 - App Client ID
-- Identity Pool ID (create a Cognito Identity Pool linked to the User Pool)
+- Identity Pool ID
 
-Set these in `pubgstars-web-static/.env`:
-
-```
-REACT_APP_COGNITO_REGION=eu-central-1
-REACT_APP_COGNITO_USER_POOL_ID=<your-user-pool-id>
-REACT_APP_COGNITO_APP_CLIENT_ID=<your-app-client-id>
-REACT_APP_COGNITO_IDENTITY_POOL_ID=<your-identity-pool-id>
-```
+Set these in `pubgstars-web-static/.env`.
 
 ---
 
 ### 2. DynamoDB Tables
-
-Run the provisioning script to create all required tables:
 
 ```bash
 cd pubgstars-web/scripts
@@ -281,31 +290,22 @@ Tables created (all in `eu-central-1`, on-demand billing):
 
 ### 3. IAM Role for Lambda
 
-Create an IAM role named `lambda-service-role` with a trust policy for `lambda.amazonaws.com` and the following managed policies:
-- `AWSLambdaBasicExecutionRole`
-- `AmazonDynamoDBFullAccess`
-
-Note the role ARN — you will need it in the build script.
+Create an IAM role named `lambda-service-role` with:
+- Trust policy: `lambda.amazonaws.com`
+- Policies: `AWSLambdaBasicExecutionRole`, `AmazonDynamoDBFullAccess`
 
 ---
 
 ### 4. Lambda Functions (Backend)
 
-First, resolve Go module dependencies:
-
-```bash
-cd pubgstars-web
-go mod tidy
-```
-
-Set the required environment variables on each Lambda function via the AWS Console or CLI:
+Set environment variables on each Lambda function:
 
 | Variable | Description |
 |---|---|
-| `SLACK_TOKEN` | Slack bot token (Bot Token Scopes: `chat:write`) |
+| `SLACK_TOKEN` | Slack bot token (`chat:write` scope) |
 | `CHANNEL_NAME` | Default Slack channel for notifications |
 
-Deploy all Lambda functions:
+Deploy all functions:
 
 ```bash
 cd pubgstars-web/scripts
@@ -318,7 +318,7 @@ Or deploy a single function:
 ./buildAndUpload.sh games
 ```
 
-The script cross-compiles to `linux/amd64`, zips the binary, and calls `aws lambda update-function-code`. The Lambda functions must already exist — create them once via the console or CLI:
+The scripts cross-compile to `linux/amd64`, zip the binary, and call `aws lambda update-function-code`. Functions must already exist — create them once:
 
 ```bash
 aws lambda create-function \
@@ -331,13 +331,15 @@ aws lambda create-function \
   --profile pg
 ```
 
-Attach the **Cognito post-confirmation trigger** to `userRegistered` and the **pre sign-up trigger** to `canUserRegister` in the User Pool settings.
+Attach Cognito triggers:
+- `canUserRegister` → pre sign-up trigger
+- `userRegistered` → post-confirmation trigger
 
 ---
 
 ### 5. API Gateway
 
-Create a REST API (`api.pubgstars.com`) with the following resources, each backed by the corresponding Lambda function:
+Create a REST API (`api.pubgstars.com`) with Lambda Proxy integration:
 
 | Path | Methods | Lambda |
 |---|---|---|
@@ -361,9 +363,10 @@ Create a REST API (`api.pubgstars.com`) with the following resources, each backe
 | `/admin/completegame` | POST | `adminCompleteGame` |
 | `/admin/addbudget` | POST | `adminAddBudget` |
 
-Enable **Lambda Proxy integration** on each method. Enable **CORS** on all resources. Deploy to a stage named `v1`.
+Enable CORS on all resources. Deploy to a stage named `v1`.
 
-The API Gateway passes the event to Lambda as a `RequestEvent`:
+The API Gateway passes events to Lambda in this format:
+
 ```json
 {
   "body-json": { ... },
@@ -379,18 +382,12 @@ The API Gateway passes the event to Lambda as a `RequestEvent`:
 ```bash
 cd pubgstars-web-static
 cp .env.example .env
-# fill in Cognito values
 npm install
 npm run build
-```
-
-Sync to S3:
-
-```bash
 aws s3 sync build s3://pubgstars.com/ --profile pg
 ```
 
-Set up the S3 bucket for static website hosting and point your CloudFront distribution or DNS to it.
+Configure the S3 bucket for static website hosting and point CloudFront to it.
 
 ---
 
